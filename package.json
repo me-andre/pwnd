@@ -2,13 +2,18 @@
   "name": "pwnd",
   "version": "0.0.1",
   "description": "Pawn and Dude - an undefined chess game",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "UNLICENSED",
   "private": true,
-  "packageManager": "pnpm@10.33.2"
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter client dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
 }
