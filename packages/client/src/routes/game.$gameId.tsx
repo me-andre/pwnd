@@ -17,10 +17,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   applyMove,
   createInitialState,
-  effectiveCandidates,
   findKingCandidateUnderAttack,
   getLegalMoves,
   isInCheck,
+  isCheckmate,
   whoseTurn,
 } from "@pwnd/core";
 import type { GameState, Move, ReplayedMove, Side } from "@pwnd/core";
@@ -29,7 +29,7 @@ import { DomRenderingEngine } from "../rendering/DomRenderingEngine.js";
 import { LocalStorageTransport } from "../transport/LocalStorageTransport.js";
 import type { GameMode, GameSession } from "../transport/Transport.js";
 
-// ── Route definition ──────────────────────────────────────────────────────────
+// ── Route ─────────────────────────────────────────────────────────────────────
 
 type GameSearch = { mode?: GameMode };
 
@@ -40,7 +40,7 @@ export const Route = createFileRoute("/game/$gameId")({
   component: GamePage,
 });
 
-// ── Singleton instances ───────────────────────────────────────────────────────
+// ── Singletons ────────────────────────────────────────────────────────────────
 
 const transport = new LocalStorageTransport();
 const renderingEngine = new DomRenderingEngine();
@@ -51,9 +51,7 @@ function reconstructState(moves: Move[]): GameState {
   let state = createInitialState();
   for (const move of moves) {
     const result = applyMove(state, move);
-    if (result.accepted) {
-      state = result.nextState;
-    }
+    if (result.accepted) state = result.nextState;
   }
   return state;
 }
@@ -72,19 +70,21 @@ function GamePage() {
   const [snackMessage, setSnackMessage] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
+  const [showGameOverDialog, setShowGameOverDialog] = useState(false);
   const onboardingShown = useRef(false);
+  const gameOverShown = useRef(false);
 
-  // Load session on mount
+  // Load session
   useEffect(() => {
     (async () => {
       const s = await transport.loadSession(gameId);
       if (s === null) {
-        await navigate({ to: "/" });
+        void navigate({ to: "/" });
         return;
       }
       setSession(s);
       setLoading(false);
-      if (!onboardingShown.current) {
+      if (!onboardingShown.current && s.moves.length === 0) {
         onboardingShown.current = true;
         setShowOnboarding(true);
       }
@@ -96,17 +96,27 @@ function GamePage() {
     [session],
   );
 
+  // Show game-over dialog once
+  useEffect(() => {
+    if (gameState?.result.status !== "ongoing" && !gameOverShown.current) {
+      gameOverShown.current = true;
+      setTimeout(() => setShowGameOverDialog(true), 500);
+    }
+  }, [gameState?.result.status]);
+
   const currentSide: Side = gameState ? whoseTurn(gameState) : "white";
 
-  // Orientation per mode
-  const facePlayer: Side = useMemo(() => {
+  // Board orientation
+  const facePlayer: Side = useMemo((): Side => {
     if (mode === "tablet") return "white";
-    if (mode === "hotseat" || mode === "solo") return currentSide;
-    return "white";
+    // hotseat and solo: flip for current player
+    return currentSide;
   }, [mode, currentSide]);
 
+  // Legal destinations for selected square
   const legalDestinations = useMemo(() => {
     if (selectedSquare === null || gameState === null) return [];
+    if (gameState.result.status !== "ongoing") return [];
     return getLegalMoves(gameState, selectedSquare).map((m) => m.to);
   }, [selectedSquare, gameState]);
 
@@ -117,51 +127,47 @@ function GamePage() {
 
       const cell = gameState.board[squareIdx];
 
-      // If a square is already selected, try to move
       if (selectedSquare !== null) {
+        // Same square → deselect
         if (squareIdx === selectedSquare) {
           setSelectedSquare(null);
           return;
         }
 
-        // Check if clicking own piece → switch selection
+        // Own piece → switch selection
         if (cell !== null && cell.owner === currentSide) {
           setSelectedSquare(squareIdx);
           return;
         }
 
-        // Try to find a legal move to this square
+        // Try to move to clicked square
         const legal = getLegalMoves(gameState, selectedSquare);
-        const candidateMoves = legal.filter((m) => m.to === squareIdx);
+        const candidates = legal.filter((m) => m.to === squareIdx);
 
-        if (candidateMoves.length === 0) {
+        if (candidates.length === 0) {
           setSelectedSquare(null);
           return;
         }
 
-        // Pick the first legal move (could be promotion or castling)
-        const move = candidateMoves[0]!;
+        const move = candidates[0]!;
         const result = applyMove(gameState, move);
-
         setReplayedMove(result.replayedMove);
         setSelectedSquare(null);
 
         if (result.accepted) {
-          const updatedSession: GameSession = {
-            ...session,
-            moves: [...session.moves, move],
-          };
-          setSession(updatedSession);
-          await transport.saveSession(updatedSession);
+          const updated: GameSession = { ...session, moves: [...session.moves, move] };
+          setSession(updated);
+          await transport.saveSession(updated);
         } else {
           setSnackMessage(result.reason ?? "Move rejected");
         }
         return;
       }
 
-      // No square selected — select if own piece
+      // No selection — select own piece
       if (cell !== null && cell.owner === currentSide) {
-        setSelectedSquare(squareIdx);
+        const hasAnyLegal = getLegalMoves(gameState, squareIdx).length > 0;
+        if (hasAnyLegal) setSelectedSquare(squareIdx);
       }
     },
     [gameState, session, selectedSquare, currentSide],
@@ -169,36 +175,54 @@ function GamePage() {
 
   const handleRestart = async () => {
     if (session === null) return;
-    const newSession: GameSession = {
+    const fresh: GameSession = {
       ...session,
       moves: [],
       createdAt: new Date().toISOString(),
     };
-    setSession(newSession);
-    await transport.saveSession(newSession);
+    setSession(fresh);
+    await transport.saveSession(fresh);
     setSelectedSquare(null);
     setReplayedMove(null);
     setShowRestartDialog(false);
+    setShowGameOverDialog(false);
+    gameOverShown.current = false;
   };
 
   if (loading || gameState === null || session === null) {
     return (
-      <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <CircularProgress />
       </Box>
     );
   }
 
-  const inCheck = isInCheck(gameState, currentSide);
-  const candidateUnderAttack = findKingCandidateUnderAttack(gameState, currentSide);
-  const isCheckLike = inCheck || candidateUnderAttack !== null;
   const isOver = gameState.result.status !== "ongoing";
+  const inCheck = !isOver && isInCheck(gameState, currentSide);
+  const kingCandidateAttacked =
+    !isOver && findKingCandidateUnderAttack(gameState, currentSide) !== null;
+  const checkedOrCandidateAttacked = inCheck || kingCandidateAttacked;
+  const isMated = !isOver && isCheckmate(gameState, currentSide);
 
   const modeLabel: Record<GameMode, string> = {
     tablet: "Tablet",
     solo: "Solo",
     hotseat: "Hot-seat",
   };
+
+  const resultText =
+    gameState.result.status === "win"
+      ? `${gameState.result.winner === "white" ? "White" : "Black"} wins!`
+      : gameState.result.status === "draw"
+        ? "Draw!"
+        : null;
 
   return (
     <Container maxWidth="lg">
@@ -212,54 +236,50 @@ function GamePage() {
           gap: 2,
         }}
       >
-        {/* Header */}
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" justifyContent="center">
-          <Typography variant="h5" fontWeight={700}>
+        {/* Header strip */}
+        <Stack
+          direction="row"
+          spacing={1.5}
+          alignItems="center"
+          flexWrap="wrap"
+          justifyContent="center"
+        >
+          <Typography variant="h5" fontWeight={700} sx={{ mr: 1 }}>
             ♟ Pawn and Dude
           </Typography>
           <Chip label={modeLabel[mode]} size="small" variant="outlined" />
           {isOver ? (
-            <Chip
-              label={
-                gameState.result.status === "win"
-                  ? `${gameState.result.winner === "white" ? "White" : "Black"} wins!`
-                  : "Draw"
-              }
-              color="success"
-              size="small"
-            />
+            <Chip label={resultText ?? "Game over"} color="success" size="small" />
           ) : (
             <Chip
-              label={`${currentSide === "white" ? "White" : "Black"}'s turn`}
+              label={`${currentSide === "white" ? "⬜ White" : "⬛ Black"}'s turn`}
               color={currentSide === "white" ? "default" : "secondary"}
               size="small"
             />
           )}
-          {isCheckLike && !isOver && (
+          {isMated && !isOver && <Chip label="Checkmate!" color="error" size="small" />}
+          {checkedOrCandidateAttacked && !isMated && !isOver && (
             <Chip label="⚠ Check!" color="warning" size="small" />
           )}
         </Stack>
 
         {/* Board */}
-        <Box
-          sx={{
-            transform: "none",
-            transition: "transform 0.4s ease",
-          }}
-        >
-          {renderingEngine.render({
-            gameState,
-            replayedMove,
-            facePlayer,
-            selectedSquare,
-            legalDestinations,
-            onSquareClick: handleSquareClick,
-          })}
-        </Box>
+        {renderingEngine.render({
+          gameState,
+          replayedMove,
+          facePlayer,
+          selectedSquare,
+          legalDestinations,
+          onSquareClick: handleSquareClick,
+        })}
 
         {/* Controls */}
         <Stack direction="row" spacing={2}>
-          <Button variant="outlined" size="small" onClick={() => navigate({ to: "/" })}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => void navigate({ to: "/" })}
+          >
             ← Menu
           </Button>
           <Button
@@ -272,40 +292,50 @@ function GamePage() {
           </Button>
         </Stack>
 
-        {/* Move count */}
         <Typography variant="caption" color="text.secondary">
-          Move {Math.floor(session.moves.length / 2) + 1} • Ply {session.moves.length}
+          Move {Math.floor(session.moves.length / 2) + 1} · Ply {session.moves.length}
         </Typography>
       </Box>
 
-      {/* Onboarding tip dialog */}
-      <Dialog open={showOnboarding} onClose={() => setShowOnboarding(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>How to play — Pawn and Dude</DialogTitle>
+      {/* ── Dialogs ─────────────────────────────────────────────────────────── */}
+
+      {/* Onboarding */}
+      <Dialog
+        open={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Welcome to Pawn and Dude ♟</DialogTitle>
         <DialogContent>
-          <Stack spacing={2}>
+          <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography>
-              All non-pawn pieces start as <strong>Dudes</strong> (shown as ⬡) — pieces in superposition
-              over the five standard types: Rook, Knight, Bishop, Queen, and King.
+              Every non-pawn piece starts as a <strong>Dude</strong> (shown as ⬡) — a piece in
+              superposition over five types: Rook, Knight, Bishop, Queen, and King.
             </Typography>
             <Typography>
-              When you move a dude, its type is narrowed to the pieces that could have made that move.
-              A dude with only one possible type <strong>materializes</strong> into that piece.
+              <strong>Moving a Dude</strong> narrows its type to the piece types that could have
+              made that move. When only one type remains, the Dude{" "}
+              <em>materializes</em> into that piece.
             </Typography>
             <Typography>
-              <strong>King rule:</strong> If all but one dude lack the ability to be a king, that dude
-              immediately materializes as King.
+              <strong>King rule:</strong> If only one Dude can still be a King, it materializes
+              immediately — the position always has a potential king.
             </Typography>
             <Typography>
-              <strong>Queen rule:</strong> At most one queen per side. If a queen is captured, the
-              queen candidate type becomes available again.
+              <strong>Queen rule:</strong> At most one queen per side. If the queen is captured,
+              the queen candidate type becomes available again for Dudes.
+            </Typography>
+            <Typography>
+              <strong>Castling:</strong> Any unmoved back-rank Dude that can still be a Rook may
+              partner with the king (or king-Dude) for castling. Both materialize.
             </Typography>
             <Typography>
               <strong>Promotion:</strong> A pawn reaching the back rank promotes into a new Dude
-              (not a chosen piece).
+              (not a chosen piece type).
             </Typography>
-            <Typography>
-              <strong>Castling:</strong> Any unmoved back-rank dude that can still be a rook may
-              partner with a king (or king-dude) for castling.
+            <Typography color="text.secondary" variant="body2">
+              Hover over a Dude to see its current candidate set.
             </Typography>
           </Stack>
         </DialogContent>
@@ -316,28 +346,71 @@ function GamePage() {
         </DialogActions>
       </Dialog>
 
+      {/* Game over */}
+      <Dialog
+        open={showGameOverDialog && isOver}
+        onClose={() => setShowGameOverDialog(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ textAlign: "center", fontSize: "2rem" }}>
+          {gameState.result.status === "win"
+            ? gameState.result.winner === "white"
+              ? "⬜ White wins!"
+              : "⬛ Black wins!"
+            : "Draw!"}
+        </DialogTitle>
+        <DialogContent>
+          <Typography textAlign="center" color="text.secondary">
+            Game over after {session.moves.length} plies.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: "center", gap: 1, pb: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => void handleRestart()}
+          >
+            Play again
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => void navigate({ to: "/" })}
+          >
+            Main menu
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Restart confirmation */}
-      <Dialog open={showRestartDialog} onClose={() => setShowRestartDialog(false)}>
+      <Dialog
+        open={showRestartDialog}
+        onClose={() => setShowRestartDialog(false)}
+        maxWidth="xs"
+      >
         <DialogTitle>Restart game?</DialogTitle>
         <DialogContent>
           <Typography>All moves will be lost. The board will reset to the starting position.</Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowRestartDialog(false)}>Cancel</Button>
-          <Button onClick={handleRestart} color="warning" variant="contained">
+          <Button
+            onClick={() => void handleRestart()}
+            color="warning"
+            variant="contained"
+          >
             Restart
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Rejected move snackbar */}
+      {/* Rejected move snack */}
       <Snackbar
         open={snackMessage !== null}
-        autoHideDuration={2000}
+        autoHideDuration={2500}
         onClose={() => setSnackMessage(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert severity="warning" onClose={() => setSnackMessage(null)}>
+        <Alert severity="warning" onClose={() => setSnackMessage(null)} sx={{ width: "100%" }}>
           {snackMessage}
         </Alert>
       </Snackbar>
