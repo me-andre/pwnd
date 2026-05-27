@@ -83,8 +83,6 @@ const DUDE_SIZE_BOOST = 1.5;
 function targetDiameterFor(n: number): number {
   return (DUDE_SIZE_BOOST * Math.PI * RING_RADIUS) / n;
 }
-/** Diameter for the lone-candidate dude (no ring). */
-const SOLO_DUDE_DIAMETER = 0.7 * DUDE_SIZE_BOOST;
 
 interface DudeStackProps {
   cell: Extract<Cell, { kind: "dude" }>;
@@ -103,17 +101,11 @@ function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
   const n = eff.length;
   if (n === 0) return null;
 
+  // A dude with exactly one effective candidate is rendered like a normal
+  // (materialised) piece: full scale, centred in the cell, no ring.
   if (n === 1) {
     const kind = eff[0] as PieceKind;
-    const footprint = pieceFootprints[`${kind}_${cell.owner}`] ?? 1;
-    return (
-      <PieceMesh
-        kind={kind}
-        side={cell.owner}
-        squareIdx={squareIdx}
-        scale={SOLO_DUDE_DIAMETER / footprint}
-      />
-    );
+    return <PieceMesh kind={kind} side={cell.owner} squareIdx={squareIdx} />;
   }
 
   const targetD = targetDiameterFor(n);
