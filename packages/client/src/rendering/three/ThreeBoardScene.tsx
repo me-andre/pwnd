@@ -15,37 +15,76 @@ import { useMaterials } from "./useMaterials.js";
 interface PieceMeshProps {
   kind: PieceKind;
   side: "white" | "black";
-  opacity?: number;
   squareIdx: number;
-  isAnimating?: boolean;
+  /** Offset within the cell, in board-local units (cell width = 1). */
+  offsetX?: number;
+  offsetZ?: number;
+  /** Uniform scale applied to the piece geometry (1 = full materialised size). */
+  scale?: number;
   emissiveBoost?: number;
 }
 
-function PieceMesh({ kind, side, opacity = 1, squareIdx, emissiveBoost = 0 }: PieceMeshProps) {
+function PieceMesh({
+  kind,
+  side,
+  squareIdx,
+  offsetX = 0,
+  offsetZ = 0,
+  scale = 1,
+  emissiveBoost = 0,
+}: PieceMeshProps) {
   const { pieceGeos } = useFbxGeometries();
   const materials = useMaterials();
   const [x, , z] = squareIdxToPos(squareIdx);
 
   const geo = pieceGeos[`${kind}_${side}`];
-  if (!geo) return null;
+  if (geo === undefined) return null;
 
   const baseMat = side === "white" ? materials.pieceWhite : materials.pieceBlack;
   const mat = useMemo(() => {
+    if (emissiveBoost === 0) return baseMat;
     const m = baseMat.clone();
-    m.transparent = opacity < 1;
-    m.opacity = opacity;
-    m.depthWrite = opacity >= 1;
-    if (emissiveBoost > 0) {
-      m.emissive = new THREE.Color(0.4, 0.3, 0.1);
-      m.emissiveIntensity = emissiveBoost;
-    }
+    m.emissive = new THREE.Color(0.4, 0.3, 0.1);
+    m.emissiveIntensity = emissiveBoost;
     return m;
-  }, [baseMat, opacity, emissiveBoost]);
+  }, [baseMat, emissiveBoost]);
 
-  return <mesh geometry={geo} material={mat} position={[x, 0, z]} castShadow receiveShadow />;
+  return (
+    <mesh
+      geometry={geo}
+      material={mat}
+      position={[x + offsetX, 0, z + offsetZ]}
+      scale={scale}
+      castShadow
+      receiveShadow
+    />
+  );
 }
 
 // ── Dude stack ────────────────────────────────────────────────────────────────
+//
+// Dude cells render as N small fully-opaque pieces evenly placed on a circle
+// centred on the cell.  Sizing rules (see PR discussion):
+//   - Ring diameter ≈ 2/3 of a cell  → ringRadius = 1/3
+//   - Half the ring's circumference is left empty → sum(piece_diameters) =
+//     π · ringRadius, so per-piece target diameter = π / (3·N).
+//   - Fewer candidates → larger pieces.  For N = 1 we skip the ring and place
+//     a single piece at cell centre at a sensible "dude-but-only-one" size.
+
+const RING_RADIUS = 1 / 3;
+/**
+ * Multiplier applied on top of the spec's "half-circumference unoccupied"
+ * sizing.  At 1.0 the bases together cover exactly half the ring's
+ * circumference; the user judged that "plenty of space around them" and
+ * asked for +50 % size, so we land at 1.5.
+ */
+const DUDE_SIZE_BOOST = 1.5;
+/** Per-piece diameter for N candidates on the ring. */
+function targetDiameterFor(n: number): number {
+  return (DUDE_SIZE_BOOST * Math.PI * RING_RADIUS) / n;
+}
+/** Diameter for the lone-candidate dude (no ring). */
+const SOLO_DUDE_DIAMETER = 0.7 * DUDE_SIZE_BOOST;
 
 interface DudeStackProps {
   cell: Extract<Cell, { kind: "dude" }>;
@@ -54,6 +93,8 @@ interface DudeStackProps {
 }
 
 function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
+  const { pieceFootprints } = useFbxGeometries();
+
   const eff = useMemo(
     () => effectiveCandidates(cell.localCandidates, board, cell.owner),
     [cell.localCandidates, board, cell.owner],
@@ -61,19 +102,42 @@ function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
 
   const n = eff.length;
   if (n === 0) return null;
-  const opacity = Math.max(0.1, 1 / n);
+
+  if (n === 1) {
+    const kind = eff[0] as PieceKind;
+    const footprint = pieceFootprints[`${kind}_${cell.owner}`] ?? 1;
+    return (
+      <PieceMesh
+        kind={kind}
+        side={cell.owner}
+        squareIdx={squareIdx}
+        scale={SOLO_DUDE_DIAMETER / footprint}
+      />
+    );
+  }
+
+  const targetD = targetDiameterFor(n);
 
   return (
     <>
-      {eff.map((k) => (
-        <PieceMesh
-          key={k}
-          kind={k as PieceKind}
-          side={cell.owner}
-          squareIdx={squareIdx}
-          opacity={opacity}
-        />
-      ))}
+      {eff.map((k, i) => {
+        const kind = k as PieceKind;
+        const angle = (2 * Math.PI * i) / n;
+        const offsetX = Math.sin(angle) * RING_RADIUS;
+        const offsetZ = -Math.cos(angle) * RING_RADIUS;
+        const footprint = pieceFootprints[`${kind}_${cell.owner}`] ?? 1;
+        return (
+          <PieceMesh
+            key={kind}
+            kind={kind}
+            side={cell.owner}
+            squareIdx={squareIdx}
+            offsetX={offsetX}
+            offsetZ={offsetZ}
+            scale={targetD / footprint}
+          />
+        );
+      })}
     </>
   );
 }
