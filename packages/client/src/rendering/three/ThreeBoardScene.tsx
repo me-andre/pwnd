@@ -1,8 +1,8 @@
 import type { Cell } from "@pwnd/core";
 import { effectiveCandidates } from "@pwnd/core";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Suspense, useCallback, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { RenderOptions } from "../RenderingEngine.js";
 import { squareIdxToPos } from "./coords.js";
@@ -52,8 +52,6 @@ interface DudeStackProps {
   squareIdx: number;
   board: readonly Cell[];
 }
-
-const _DUDE_KINDS: PieceKind[] = ["R", "N", "B", "Q", "K"];
 
 function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
   const eff = useMemo(
@@ -233,17 +231,6 @@ function MovingPiece({
   );
 }
 
-// ── Readiness signal ──────────────────────────────────────────────────────────
-// Fires after Suspense resolves (FBX + textures loaded) so Playwright can wait
-// for canvas[data-canvas-ready="true"] and know real geometry is present.
-function ReadinessSignal() {
-  const { gl } = useThree();
-  useEffect(() => {
-    gl.domElement.setAttribute("data-canvas-ready", "true");
-  }, [gl]);
-  return null;
-}
-
 // ── Board model ────────────────────────────────────────────────────────────────
 
 function BoardModel({ material }: { material: THREE.MeshStandardMaterial }) {
@@ -388,9 +375,6 @@ function BoardSceneContent({
           <SquarePicker key={idx} squareIdx={idx} onSquareClick={onSquareClick} />
         ))}
       </group>
-
-      {/* Fires after Suspense resolves so Playwright can wait for actual geometry */}
-      <ReadinessSignal />
     </>
   );
 }
