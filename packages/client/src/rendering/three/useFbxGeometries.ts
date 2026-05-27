@@ -97,16 +97,17 @@ export function useFbxGeometries(): FbxGeometries {
   const fbx = useFBX("/models/chess_lp.fbx");
 
   return useMemo(() => {
-    // Rotate the entire FBX scene 90° CCW around Y once, before extracting
-    // any geometry. The Blender model has files (a–h) along local Z and ranks
-    // (1–8) along local X; after this rotation:
-    //   original z+ (file-a edge)  → world x−  (board's left)
-    //   original x+ (rank-0 edge)  → world z+  (front, facing white camera)
-    // The board's front edge now carries letter labels (a–h) and side edges
-    // carry rank numbers — standard chess orientation. Pieces inherit the
-    // rotation through their world matrices: e.g. the white knight, which
-    // originally faced toward +Z, now faces toward +X (its 7th-rank opponent).
-    fbx.rotation.y = Math.PI / 2;
+    // Rotate the entire FBX scene 90° CW around Y once, before extracting any
+    // geometry. Verified via snapshot iteration:
+    //   - Original (0°)  : rank-number strip along front edge (camera at +Z),
+    //                      file letters along left/right edges → wrong axis.
+    //   - 90° CCW (+π/2) : file letters appear on front edge but reversed
+    //                      (h–a left-to-right) → wrong direction.
+    //   - 90° CW  (−π/2) : file letters a–h on front edge in standard order,
+    //                      rank numbers 1–8 on side edges (1 near white camera,
+    //                      8 near black), pieces facing forward across the
+    //                      board.  All three constraints satisfied.
+    fbx.rotation.y = -Math.PI / 2;
     fbx.updateWorldMatrix(true, true);
 
     // ── Board ──────────────────────────────────────────────────────────────────
