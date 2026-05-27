@@ -37,6 +37,13 @@ export interface FbxGeometries {
   boardGeo: THREE.BufferGeometry;
   /** Normalized piece geometries keyed by `${kind}_${side}` e.g. "K_white" */
   pieceGeos: Record<string, THREE.BufferGeometry>;
+  /**
+   * Piece footprint diameter in world units, keyed identically to `pieceGeos`.
+   * Defined as max(x_size, z_size) of the piece's post-normalisation bounding
+   * box.  Used by DudeStack to scale each candidate piece so its base
+   * matches a target diameter.
+   */
+  pieceFootprints: Record<string, number>;
   /** Uniform scale factor applied to all geometries (FBX units → 8-unit board). */
   scaleFactor: number;
 }
@@ -141,6 +148,7 @@ export function useFbxGeometries(): FbxGeometries {
 
     // ── Pieces ─────────────────────────────────────────────────────────────────
     const pieceGeos: Record<string, THREE.BufferGeometry> = {};
+    const pieceFootprints: Record<string, number> = {};
     const sides: Side[] = ["white", "black"];
     const kinds: PieceKind[] = ["P", "R", "N", "B", "Q", "K"];
 
@@ -148,12 +156,21 @@ export function useFbxGeometries(): FbxGeometries {
       for (const side of sides) {
         const meshName = PIECE_FBX_NAMES[kind][side];
         const mesh = findMesh(fbx, meshName);
-        if (mesh) {
-          pieceGeos[`${kind}_${side}`] = extractNormalizedGeo(mesh, scaleFactor, false);
+        if (!mesh) continue;
+        const key = `${kind}_${side}`;
+        const geo = extractNormalizedGeo(mesh, scaleFactor, false);
+        // extractNormalizedGeo translated the geometry; recompute the bbox to
+        // get post-translation extents and use max(x_size, z_size) as the
+        // footprint diameter.
+        geo.computeBoundingBox();
+        const box = geo.boundingBox;
+        if (box !== null) {
+          pieceFootprints[key] = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
         }
+        pieceGeos[key] = geo;
       }
     }
 
-    return { boardGeo, pieceGeos, scaleFactor };
+    return { boardGeo, pieceGeos, pieceFootprints, scaleFactor };
   }, [fbx]);
 }
