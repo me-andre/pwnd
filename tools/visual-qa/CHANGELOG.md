@@ -5,3 +5,27 @@ Records each snapshot run and kept changes from the iterative correction loop.
 ## Format
 
 Each entry: `## <ISO-timestamp>` followed by scenario list and any code changes made.
+
+## 2026-05-27T08-51-39-536Z
+
+- initial: Initial board position
+- after-e4: After 1. e4
+- tablet-initial: Tablet mode initial
+- solo-after-move: Solo mode: one move played, board facing black
+- mid-game: Mid game: e4 d5 Nf3
+
+## 2026-05-27T08-56-45-052Z
+
+- initial: Initial board position
+- after-e4: After 1. e4
+- tablet-initial: Tablet mode initial
+- solo-after-move: Solo mode: one move played, board facing black
+- mid-game: Mid game: e4 d5 Nf3
+
+## 2026-05-27T09-02-56-742Z
+
+- initial: Initial board position
+- after-e4: After 1. e4
+- tablet-initial: Tablet mode initial
+- solo-after-move: Solo mode: one move played, board facing black
+- mid-game: Mid game: e4 d5 Nf3

@@ -1,7 +1,3 @@
-import { spawn } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 /**
  * Playwright visual QA snapshot harness.
  *
@@ -10,13 +6,17 @@ import { fileURLToPath } from "node:url";
  *
  * If PWND_DEV_URL is not set, the script spawns `pnpm dev` internally.
  */
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { SCENARIOS } from "./scenarios.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../..");
 
-const DEV_URL = process.env.PWND_DEV_URL ?? "http://localhost:5174";
+const DEV_URL = process.env.PWND_DEV_URL ?? "http://localhost:5173";
 const RUNS_DIR = path.join(__dirname, "runs");
 const RUN_ID = new Date().toISOString().replace(/[:.]/g, "-");
 const OUT_DIR = path.join(RUNS_DIR, RUN_ID);
@@ -27,8 +27,8 @@ async function waitForServer(url: string, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const { status } = await fetch(url);
-      if (status < 500) return;
+      const res = await fetch(url);
+      if (res.status < 500) return;
     } catch {
       // Not ready yet
     }
@@ -52,10 +52,19 @@ async function main(): Promise<void> {
     console.log(`Dev server ready at ${DEV_URL}`);
   }
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    args: [
+      "--enable-webgl",
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--ignore-gpu-blocklist",
+      "--enable-gpu-rasterization",
+      "--disable-gpu-sandbox",
+    ],
+  });
+
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
-    recordVideo: { dir: OUT_DIR, size: { width: 1280, height: 900 } },
   });
 
   try {
@@ -73,22 +82,27 @@ async function main(): Promise<void> {
 
       await page.goto(DEV_URL);
       await page.evaluate(
-        ([key, value]) => {
-          localStorage.setItem(key as string, JSON.stringify(value));
+        (args: [string, unknown]) => {
+          const [key, value] = args;
+          localStorage.setItem(key, JSON.stringify(value));
         },
-        [`pwnd:game:${gameId}`, session],
+        [`pwnd:game:${gameId}`, session] as [string, unknown],
       );
 
       // Navigate to the game
       await page.goto(`${DEV_URL}/game/${gameId}?mode=${scenario.mode}`);
 
-      // Wait for canvas to be ready
-      await page.waitForSelector('canvas[data-canvas-ready="true"]', {
-        timeout: 15_000,
-      });
+      // Wait for canvas readiness (set by ReadinessSignal after Suspense resolves)
+      try {
+        await page.waitForSelector('canvas[data-canvas-ready="true"]', {
+          timeout: 20_000,
+        });
+      } catch {
+        console.warn(`  ⚠ canvas-ready timeout for ${scenario.id}, taking screenshot anyway`);
+      }
 
-      // Give Three.js a moment to render
-      await page.waitForTimeout(1500);
+      // Allow a full render cycle + animations to settle
+      await page.waitForTimeout(2000);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.id}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: false });

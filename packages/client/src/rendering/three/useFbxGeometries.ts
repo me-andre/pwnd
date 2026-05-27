@@ -7,19 +7,21 @@ import * as THREE from "three";
 export type PieceKind = "P" | "R" | "N" | "B" | "Q" | "K";
 
 /**
- * FBX model names for each piece kind × side.
- * Discovered by inspecting Chess_LP.fbx binary (Knight = "Horse", Bishop = "Elephant").
+ * FBX model names after THREE.PropertyBinding.sanitizeNodeName processing:
+ *   spaces → underscores, reserved chars stripped.
+ * Raw FBX names discovered by binary inspection; sanitized names used at runtime.
+ * Knight = "Horse", Bishop = "Elephant" (Blender model naming).
  */
 const PIECE_FBX_NAMES: Record<PieceKind, Record<Side, string>> = {
-  P: { white: "Pawn Chess Piece_White 1_LP", black: "Pawn Chess Piece 1_Black_LP" },
-  R: { white: "Chess piece Rook 1_White_LP", black: "Chess piece Rook 1_Black_LP" },
-  N: { white: "Chess piece Horse 1_White_LP", black: "Chess piece Horse 1_Black_LP" },
-  B: { white: "Elephant Chess Piece 1_White_LP", black: "Elephant Chess Piece 1_Black_LP" },
-  Q: { white: "Queen Chess Piece_White_LP", black: "Queen Chess Piece_Black_LP" },
-  K: { white: "Chess piece King_White_LP", black: "Chess piece King_Black_LP" },
+  P: { white: "Pawn_Chess_Piece_White_1_LP", black: "Pawn_Chess_Piece_1_Black_LP" },
+  R: { white: "Chess_piece_Rook_1_White_LP", black: "Chess_piece_Rook_1_Black_LP" },
+  N: { white: "Chess_piece_Horse_1_White_LP", black: "Chess_piece_Horse_1_Black_LP" },
+  B: { white: "Elephant_Chess_Piece_1_White_LP", black: "Elephant_Chess_Piece_1_Black_LP" },
+  Q: { white: "Queen_Chess_Piece_White_LP", black: "Queen_Chess_Piece_Black_LP" },
+  K: { white: "Chess_piece_King_White_LP", black: "Chess_piece_King_Black_LP" },
 };
 
-const BOARD_FBX_NAME = "Chess board_LP";
+const BOARD_FBX_NAME = "Chess_board_LP";
 
 export interface FbxGeometries {
   boardGeo: THREE.BufferGeometry;
@@ -31,9 +33,18 @@ export interface FbxGeometries {
 
 function findMesh(root: THREE.Object3D, name: string): THREE.Mesh | null {
   const obj = root.getObjectByName(name);
-  if (!obj) return null;
+  if (!obj) {
+    if (import.meta.env.DEV) {
+      const allNames: string[] = [];
+      root.traverse((o) => {
+        if (o.name) allNames.push(o.name);
+      });
+      console.warn(`[useFbxGeometries] "${name}" not found. Available names:`, allNames);
+    }
+    return null;
+  }
   if (obj instanceof THREE.Mesh) return obj;
-  // Try first child that is a Mesh (FBX groups sometimes wrap geometry)
+  // FBX groups sometimes wrap geometry — try first Mesh child
   for (const child of obj.children) {
     if (child instanceof THREE.Mesh) return child;
   }
@@ -82,7 +93,14 @@ export function useFbxGeometries(): FbxGeometries {
     // ── Board ──────────────────────────────────────────────────────────────────
     const boardMesh = findMesh(fbx, BOARD_FBX_NAME);
     if (!boardMesh) {
-      throw new Error(`FBX: board mesh "${BOARD_FBX_NAME}" not found`);
+      // findMesh already logs available names in DEV; surface them in prod too
+      const allNames: string[] = [];
+      fbx.traverse((o) => {
+        if (o.name) allNames.push(o.name);
+      });
+      throw new Error(
+        `FBX: board mesh "${BOARD_FBX_NAME}" not found. Available: ${allNames.join(", ")}`,
+      );
     }
 
     // Compute board bounding box in world space
