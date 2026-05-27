@@ -101,6 +101,17 @@ function GamePage() {
     }
   }, [gameState?.result.status]);
 
+  // Clear last-move highlights once the move animation + auto-facing rotation
+  // have settled (~350 ms lerp + ~700 ms damped rotation = 1.2 s budget).
+  // After the new player's turn has fully begun, the previous move's
+  // from/to tints would otherwise remain green forever, which looks stale —
+  // especially in solo/hotseat where the board has visibly rotated.
+  useEffect(() => {
+    if (replayedMove === null) return;
+    const t = setTimeout(() => setReplayedMove(null), 1200);
+    return () => clearTimeout(t);
+  }, [replayedMove]);
+
   const currentSide: Side = gameState ? whoseTurn(gameState) : "white";
 
   // Board orientation
