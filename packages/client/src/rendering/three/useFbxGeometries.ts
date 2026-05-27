@@ -23,6 +23,16 @@ const PIECE_FBX_NAMES: Record<PieceKind, Record<Side, string>> = {
 
 const BOARD_FBX_NAME = "Chess_board_LP";
 
+/**
+ * Width of the wooden frame on a single side of the board, expressed as a
+ * fraction of the total board side length (frame-to-frame).  Measured from
+ * the LP model: a single border is ≈ 2.8 % of the total side length.
+ */
+export const BOARD_BORDER_FRACTION = 0.028;
+
+/** Fraction of the model's total side that is actual playable squares. */
+const PLAYABLE_FRACTION = 1 - 2 * BOARD_BORDER_FRACTION;
+
 export interface FbxGeometries {
   boardGeo: THREE.BufferGeometry;
   /** Normalized piece geometries keyed by `${kind}_${side}` e.g. "K_white" */
@@ -120,10 +130,14 @@ export function useFbxGeometries(): FbxGeometries {
     if (!boardBbox) throw new Error("FBX: board bounding box could not be computed");
     const boardSize = boardBbox.getSize(new THREE.Vector3());
 
-    // Scale so the board's X span = 8 (one unit per square).
-    // Bug-3 note: scaleFactor is intentionally based on the total board width
-    // (including frame) here; the border adjustment is applied separately below.
-    const scaleFactor = 8 / boardSize.x;
+    // Scale so the playable 8×8 area (excluding wooden frame) is exactly 8 units.
+    // The model has a wooden frame around the playable squares; its width on each
+    // side is BOARD_BORDER_FRACTION of the total model side. The playable side is
+    // therefore (1 − 2·BOARD_BORDER_FRACTION) of the total, and we set
+    //   scaleFactor = 8 / (boardSize.x · (1 − 2·BOARD_BORDER_FRACTION))
+    // so that 1 world unit corresponds to one square and the playable area
+    // exactly spans x ∈ [−4, +4], z ∈ [−4, +4].
+    const scaleFactor = 8 / (boardSize.x * PLAYABLE_FRACTION);
 
     // Normalize board: top surface at Y=0
     const boardGeo = extractNormalizedGeo(boardMesh, scaleFactor, true);
