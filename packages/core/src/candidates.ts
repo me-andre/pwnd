@@ -6,7 +6,7 @@
  * "Effective" candidates are computed on demand: local ∩ (ALL − global exclusions).
  */
 
-import type { Cell, DudeKind, GameState, Side } from "./types.js";
+import type { Cell, DudeKind, Side } from "./types.js";
 import { ALL_DUDE_KINDS } from "./types.js";
 
 // ── Global constraint helpers ─────────────────────────────────────────────────
@@ -54,10 +54,7 @@ export function effectiveCandidates(
  * Widen a local candidate set for a freshly promoted dude: start with ALL and
  * apply global constraints immediately.
  */
-export function widestLocalCandidates(
-  board: ReadonlyArray<Cell>,
-  side: Side,
-): DudeKind[] {
+export function widestLocalCandidates(board: ReadonlyArray<Cell>, side: Side): DudeKind[] {
   const excl = globalExclusions(board, side);
   return ALL_DUDE_KINDS.filter((k) => !excl.has(k));
 }
@@ -142,7 +139,11 @@ export function propagatePass(
           if (c === null || c.kind !== "dude" || c.owner !== side) continue;
           const eff = effectiveCandidates(c.localCandidates, cells, c.owner);
           if (eff.length === 1) {
-            cells[i] = { kind: "materialized", owner: c.owner, piece: eff[0] as import("./types.js").DudeKind };
+            cells[i] = {
+              kind: "materialized",
+              owner: c.owner,
+              piece: eff[0] as import("./types.js").DudeKind,
+            };
             materializedSquares.push(i);
             changed = true;
             innerChanged = true;

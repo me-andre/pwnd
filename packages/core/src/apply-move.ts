@@ -10,10 +10,10 @@ import {
   rookReachable,
   squaresBetween,
 } from "./movement.js";
-import { fileOf, rankOf } from "./squares.js";
+import { rankOf } from "./squares.js";
 import type {
-  Cell,
   CastlingRights,
+  Cell,
   DudeKind,
   GameState,
   Move,
@@ -176,7 +176,12 @@ export function isInCheck(state: GameState, side: Side): boolean {
 export function findMaterializedKing(board: ReadonlyArray<Cell>, side: Side): number | null {
   for (let i = 0; i < 64; i++) {
     const cell = board[i];
-    if (cell !== null && cell.kind === "materialized" && cell.owner === side && cell.piece === "K") {
+    if (
+      cell !== null &&
+      cell.kind === "materialized" &&
+      cell.owner === side &&
+      cell.piece === "K"
+    ) {
       return i;
     }
   }
@@ -188,11 +193,7 @@ export function findMaterializedKing(board: ReadonlyArray<Cell>, side: Side): nu
  * `attackingSide`. Uses candidate moves (without legality filtering to avoid
  * infinite recursion).
  */
-export function isSquareAttackedBy(
-  state: GameState,
-  square: number,
-  attackingSide: Side,
-): boolean {
+export function isSquareAttackedBy(state: GameState, square: number, attackingSide: Side): boolean {
   const { board } = state;
   for (let i = 0; i < 64; i++) {
     const cell = board[i];
@@ -203,10 +204,7 @@ export function isSquareAttackedBy(
   return false;
 }
 
-export function findKingCandidateUnderAttack(
-  state: GameState,
-  side: Side,
-): number | null {
+export function findKingCandidateUnderAttack(state: GameState, side: Side): number | null {
   const attackingSide: Side = side === "white" ? "black" : "white";
   for (let i = 0; i < 64; i++) {
     const cell = state.board[i];
@@ -320,9 +318,7 @@ function executeCastling(state: GameState, move: Move, side: Side): ApplyMoveRes
   const kingCell = newBoard[move.from]!;
   newBoard[move.from] = null;
   newBoard[move.to] =
-    kingCell.kind === "dude"
-      ? { kind: "materialized", owner: side, piece: "K" }
-      : kingCell;
+    kingCell.kind === "dude" ? { kind: "materialized", owner: side, piece: "K" } : kingCell;
 
   newBoard[rookFrom] = null;
   newBoard[rookTo] = { kind: "materialized", owner: side, piece: "R" };

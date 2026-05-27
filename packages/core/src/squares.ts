@@ -18,7 +18,7 @@ export function indexToSquare(idx: SquareIndex): Square {
 /** Convert "e4" style string to index. */
 export function algebraicToIndex(alg: string): SquareIndex {
   const file = alg[0] as File;
-  const rank = parseInt(alg[1] ?? "0", 10) as Rank;
+  const rank = Number.parseInt(alg[1] ?? "0", 10) as Rank;
   return squareIndex({ file, rank });
 }
 
@@ -39,11 +39,7 @@ export function rankOf(idx: SquareIndex): number {
 }
 
 /** Return the index offset by (deltaFile, deltaRank), or null if off-board. */
-export function offset(
-  idx: SquareIndex,
-  deltaFile: number,
-  deltaRank: number,
-): SquareIndex | null {
+export function offset(idx: SquareIndex, deltaFile: number, deltaRank: number): SquareIndex | null {
   const f = fileOf(idx) + deltaFile;
   const r = rankOf(idx) + deltaRank;
   if (f < 0 || f > 7 || r < 0 || r > 7) return null;

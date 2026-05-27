@@ -1,12 +1,4 @@
-import {
-  Box,
-  Button,
-  Container,
-  Divider,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Container, Divider, Stack, Tooltip, Typography } from "@mui/material";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { v4 as uuidv4 } from "uuid";
 import { LocalStorageTransport } from "../transport/LocalStorageTransport.js";
@@ -59,7 +51,10 @@ function MainMenu() {
         </Box>
 
         <Stack spacing={2} width="100%">
-          <Tooltip title="Both players share the same device, board flips between turns" placement="right">
+          <Tooltip
+            title="Both players share the same device, board flips between turns"
+            placement="right"
+          >
             <Button
               variant="contained"
               size="large"
@@ -71,7 +66,10 @@ function MainMenu() {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Board always faces the same direction — play on a tablet laid flat" placement="right">
+          <Tooltip
+            title="Board always faces the same direction — play on a tablet laid flat"
+            placement="right"
+          >
             <Button
               variant="outlined"
               size="large"
@@ -83,7 +81,10 @@ function MainMenu() {
             </Button>
           </Tooltip>
 
-          <Tooltip title="Single player — board rotates so your pieces always face you" placement="right">
+          <Tooltip
+            title="Single player — board rotates so your pieces always face you"
+            placement="right"
+          >
             <Button
               variant="outlined"
               size="large"

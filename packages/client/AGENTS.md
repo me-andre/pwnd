@@ -22,7 +22,16 @@ TanStack file-based router. Routes live in `src/routes/`.
 `src/transport/Transport.ts` defines the interface. `LocalStorageTransport` is the MVP implementation. `HttpTransport` is a stub class (throws "not implemented").
 
 ## Rendering engine
-`RenderingEngine` interface in `src/rendering/RenderingEngine.ts`. `DomRenderingEngine` is the DOM implementation (CSS grid, MUI, rotation, animations).
+`RenderingEngine` interface in `src/rendering/RenderingEngine.ts`.
+`ThreeRenderingEngine` (in `src/rendering/three/`) is the 3D implementation: Three.js / react-three-fiber
+`<Canvas>` with a wooden PBR board (FBX + WebP maps), metallic pieces, OrbitControls for free camera
+rotation, and damped auto-facing that smoothly turns the board toward the current player on each turn.
+`DomRenderingEngine` has been removed.
+
+## Equality checks
+Same as root AGENTS.md: always `===` / `!==`; never `==` / `!=`. When `noUncheckedIndexedAccess`
+widens an array element type to `T | undefined`, add an explicit `=== undefined` guard at the
+call site rather than using loose `!= null`.
 
 ## Union shape rule
 Same as root AGENTS.md: homogeneous discriminated unions only.
