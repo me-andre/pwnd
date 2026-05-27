@@ -111,11 +111,27 @@ export function useFbxGeometries(): FbxGeometries {
     if (!boardBbox) throw new Error("FBX: board bounding box could not be computed");
     const boardSize = boardBbox.getSize(new THREE.Vector3());
 
-    // Scale so the board's X span = 8 (one unit per square)
+    // Scale so the board's X span = 8 (one unit per square).
+    // Bug-3 note: scaleFactor is intentionally based on the total board width
+    // (including frame) here; the border adjustment is applied separately below.
     const scaleFactor = 8 / boardSize.x;
 
-    // Normalize board: top surface at Y=0
+    // Normalize board: top surface at Y=0, then rotate 90 ° CCW around Y.
+    //
+    // Blender exports the board with files (a–h) along the local Z axis and
+    // ranks (1–8) along the local X axis.  Three.js's FBXLoader preserves that
+    // orientation so, without rotation, the camera (at z = +9) looks at the
+    // rank-1 edge, which carries rank-number labels instead of file letters.
+    // Rotating 90 ° CCW maps:
+    //   original z+ (file-a side) → world x− (left of camera)   ✓
+    //   original x+ (rank-0 side) → world z+ (front of camera)
+    // The front edge of the board now shows the file-letter label strip, and
+    // the left/right edges show rank numbers — standard chess orientation.
+    // Square colours work out correctly because the Blender board colours
+    // squares by (rank + file) % 2 in original local space, which round-trips
+    // through the rotation to (file + rank) % 2 in world space.
     const boardGeo = extractNormalizedGeo(boardMesh, scaleFactor, true);
+    boardGeo.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI / 2));
 
     // ── Pieces ─────────────────────────────────────────────────────────────────
     const pieceGeos: Record<string, THREE.BufferGeometry> = {};
