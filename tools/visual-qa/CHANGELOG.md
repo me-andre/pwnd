@@ -69,3 +69,19 @@ Each entry: `## <ISO-timestamp>` followed by scenario list and any code changes 
 - tablet-initial: Tablet mode initial
 - solo-after-move: Solo mode: one move played, board facing black
 - mid-game: Mid game: e4 d5 Nf3
+
+## 2026-05-27T10-07-14-129Z
+
+- initial: Initial board position
+- after-e4: After 1. e4
+- tablet-initial: Tablet mode initial
+- solo-after-move: Solo mode: one move played, board facing black
+- mid-game: Mid game: e4 d5 Nf3
+
+## 2026-05-27T10-19-57-615Z
+
+- initial: Initial board position
+- after-e4: After 1. e4
+- tablet-initial: Tablet mode initial
+- solo-after-move: Solo mode: one move played, board facing black
+- mid-game: Mid game: e4 d5 Nf3

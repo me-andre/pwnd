@@ -98,15 +98,11 @@ export function useFbxGeometries(): FbxGeometries {
 
   return useMemo(() => {
     // Rotate the entire FBX scene 90° CW around Y once, before extracting any
-    // geometry. Verified via snapshot iteration:
-    //   - Original (0°)  : rank-number strip along front edge (camera at +Z),
-    //                      file letters along left/right edges → wrong axis.
-    //   - 90° CCW (+π/2) : file letters appear on front edge but reversed
-    //                      (h–a left-to-right) → wrong direction.
-    //   - 90° CW  (−π/2) : file letters a–h on front edge in standard order,
-    //                      rank numbers 1–8 on side edges (1 near white camera,
-    //                      8 near black), pieces facing forward across the
-    //                      board.  All three constraints satisfied.
+    // geometry. Verified via snapshot iteration with the user:
+    //   - +π/2  : file letters at front but reversed (h-a) → wrong direction.
+    //   - -π/2  : file letters a-h on front edge in standard order, rank
+    //             numbers 1-8 on side edges (1 near white camera, 8 near
+    //             black), pieces facing across the board → correct.
     fbx.rotation.y = -Math.PI / 2;
     fbx.updateWorldMatrix(true, true);
 
