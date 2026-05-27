@@ -4,6 +4,7 @@ import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useCallback, useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { RenderOptions } from "../RenderingEngine.js";
 import { squareIdxToPos } from "./coords.js";
 import { useAutoFacing } from "./useAutoFacing.js";
@@ -313,7 +314,8 @@ function BoardSceneContent({
 }: RenderOptions) {
   const materials = useMaterials();
   const boardGroupRef = useRef<THREE.Group>(null);
-  useAutoFacing(boardGroupRef, facePlayer);
+  const orbitControlsRef = useRef<OrbitControlsImpl>(null);
+  useAutoFacing({ boardGroupRef, controlsRef: orbitControlsRef, facePlayer });
 
   const { board } = gameState;
   const lastMove = replayedMove?.move ?? null;
@@ -349,8 +351,10 @@ function BoardSceneContent({
       {/* Ground shadow */}
       <ContactShadows position={[0, -0.5, 0]} opacity={0.5} scale={12} blur={2} far={4} />
 
-      {/* Orbit controls */}
+      {/* Orbit controls — ref forwarded to useAutoFacing so we can pull the
+          camera back to default position on each turn change. */}
       <OrbitControls
+        ref={orbitControlsRef}
         enablePan={false}
         minDistance={7}
         maxDistance={22}
