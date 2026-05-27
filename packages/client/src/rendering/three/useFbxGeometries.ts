@@ -87,7 +87,16 @@ export function useFbxGeometries(): FbxGeometries {
   const fbx = useFBX("/models/chess_lp.fbx");
 
   return useMemo(() => {
-    // Ensure all world matrices are current
+    // Rotate the entire FBX scene 90° CCW around Y once, before extracting
+    // any geometry. The Blender model has files (a–h) along local Z and ranks
+    // (1–8) along local X; after this rotation:
+    //   original z+ (file-a edge)  → world x−  (board's left)
+    //   original x+ (rank-0 edge)  → world z+  (front, facing white camera)
+    // The board's front edge now carries letter labels (a–h) and side edges
+    // carry rank numbers — standard chess orientation. Pieces inherit the
+    // rotation through their world matrices: e.g. the white knight, which
+    // originally faced toward +Z, now faces toward +X (its 7th-rank opponent).
+    fbx.rotation.y = Math.PI / 2;
     fbx.updateWorldMatrix(true, true);
 
     // ── Board ──────────────────────────────────────────────────────────────────
@@ -116,22 +125,8 @@ export function useFbxGeometries(): FbxGeometries {
     // (including frame) here; the border adjustment is applied separately below.
     const scaleFactor = 8 / boardSize.x;
 
-    // Normalize board: top surface at Y=0, then rotate 90 ° CCW around Y.
-    //
-    // Blender exports the board with files (a–h) along the local Z axis and
-    // ranks (1–8) along the local X axis.  Three.js's FBXLoader preserves that
-    // orientation so, without rotation, the camera (at z = +9) looks at the
-    // rank-1 edge, which carries rank-number labels instead of file letters.
-    // Rotating 90 ° CCW maps:
-    //   original z+ (file-a side) → world x− (left of camera)   ✓
-    //   original x+ (rank-0 side) → world z+ (front of camera)
-    // The front edge of the board now shows the file-letter label strip, and
-    // the left/right edges show rank numbers — standard chess orientation.
-    // Square colours work out correctly because the Blender board colours
-    // squares by (rank + file) % 2 in original local space, which round-trips
-    // through the rotation to (file + rank) % 2 in world space.
+    // Normalize board: top surface at Y=0
     const boardGeo = extractNormalizedGeo(boardMesh, scaleFactor, true);
-    boardGeo.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI / 2));
 
     // ── Pieces ─────────────────────────────────────────────────────────────────
     const pieceGeos: Record<string, THREE.BufferGeometry> = {};
