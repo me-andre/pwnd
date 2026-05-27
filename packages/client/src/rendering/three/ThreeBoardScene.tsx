@@ -64,24 +64,31 @@ function PieceMesh({
 // ── Dude stack ────────────────────────────────────────────────────────────────
 //
 // Dude cells render as N small fully-opaque pieces evenly placed on a circle
-// centred on the cell.  Sizing rules (see PR discussion):
+// centred on the cell.  Layout:
 //   - Ring diameter ≈ 2/3 of a cell  → ringRadius = 1/3
-//   - Half the ring's circumference is left empty → sum(piece_diameters) =
-//     π · ringRadius, so per-piece target diameter = π / (3·N).
-//   - Fewer candidates → larger pieces.  For N = 1 we skip the ring and place
-//     a single piece at cell centre at a sensible "dude-but-only-one" size.
-
+//   - For N = 1 we skip the ring and place a single piece at cell centre at
+//     normal materialised-piece size.
+//
+// Sizing rule (N ≥ 2): each piece's base — treated as a square of side
+// `footprint` — is sized so that the N bases together cover a fixed fraction
+// of the cell's square area.
+//   N · target_side²  =  DUDE_AREA_COVERAGE · cell_area     (cell_area = 1)
+//   target_side       =  √(DUDE_AREA_COVERAGE / N)
+//   scale             =  target_side / footprint
+//
+// The √(1/N) shape is intentionally less aggressive than the previous linear
+// 1/N sizing: doubling the candidate count only shrinks pieces by √2 instead
+// of by 2×, so dropping from 5 candidates to 2 grows them 1.58× rather than
+// 2.5× (the previous formula made N=2 dudes overflow their cell).
+//
+// DUDE_AREA_COVERAGE was calibrated to keep N = 5 visually matching the
+// previously hand-tuned rendering (target_diameter ≈ 0.314 cell, so
+// 5 · 0.314² ≈ 0.493).  Rounded to 0.5 — clean physical meaning ("bases
+// cover half the cell area combined") and within 1% of the calibrated value.
 const RING_RADIUS = 1 / 3;
-/**
- * Multiplier applied on top of the spec's "half-circumference unoccupied"
- * sizing.  At 1.0 the bases together cover exactly half the ring's
- * circumference; the user judged that "plenty of space around them" and
- * asked for +50 % size, so we land at 1.5.
- */
-const DUDE_SIZE_BOOST = 1.5;
-/** Per-piece diameter for N candidates on the ring. */
-function targetDiameterFor(n: number): number {
-  return (DUDE_SIZE_BOOST * Math.PI * RING_RADIUS) / n;
+const DUDE_AREA_COVERAGE = 0.5;
+function dudePieceTargetSide(n: number): number {
+  return Math.sqrt(DUDE_AREA_COVERAGE / n);
 }
 
 interface DudeStackProps {
@@ -108,7 +115,7 @@ function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
     return <PieceMesh kind={kind} side={cell.owner} squareIdx={squareIdx} />;
   }
 
-  const targetD = targetDiameterFor(n);
+  const targetSide = dudePieceTargetSide(n);
 
   return (
     <>
@@ -126,7 +133,7 @@ function DudeStack({ cell, squareIdx, board }: DudeStackProps) {
             squareIdx={squareIdx}
             offsetX={offsetX}
             offsetZ={offsetZ}
-            scale={targetD / footprint}
+            scale={targetSide / footprint}
           />
         );
       })}
