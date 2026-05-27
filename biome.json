@@ -9,7 +9,11 @@
       "recommended": true,
       "style": {
         "useConst": "error",
-        "noVar": "error"
+        "noVar": "error",
+        "noNonNullAssertion": "warn"
+      },
+      "suspicious": {
+        "noDoubleEquals": "error"
       },
       "correctness": {
         "noUnusedVariables": "warn",
@@ -31,6 +35,18 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", "dist", "*.tsbuildinfo", "coverage"]
-  }
+    "ignore": ["node_modules", "dist", "*.tsbuildinfo", "coverage", "**/routeTree.gen.ts"]
+  },
+  "overrides": [
+    {
+      "include": ["packages/client/src/rendering/three/*.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -13,19 +13,19 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   applyMove,
   createInitialState,
   findKingCandidateUnderAttack,
   getLegalMoves,
-  isInCheck,
   isCheckmate,
+  isInCheck,
   whoseTurn,
 } from "@pwnd/core";
 import type { GameState, Move, ReplayedMove, Side } from "@pwnd/core";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DomRenderingEngine } from "../rendering/DomRenderingEngine.js";
+import { ThreeRenderingEngine } from "../rendering/three/ThreeRenderingEngine.js";
 import { LocalStorageTransport } from "../transport/LocalStorageTransport.js";
 import type { GameMode, GameSession } from "../transport/Transport.js";
 
@@ -43,7 +43,7 @@ export const Route = createFileRoute("/game/$gameId")({
 // ── Singletons ────────────────────────────────────────────────────────────────
 
 const transport = new LocalStorageTransport();
-const renderingEngine = new DomRenderingEngine();
+const renderingEngine = new ThreeRenderingEngine();
 
 // ── State reconstruction ──────────────────────────────────────────────────────
 
@@ -91,10 +91,7 @@ function GamePage() {
     })();
   }, [gameId, navigate]);
 
-  const gameState = useMemo(
-    () => (session ? reconstructState(session.moves) : null),
-    [session],
-  );
+  const gameState = useMemo(() => (session ? reconstructState(session.moves) : null), [session]);
 
   // Show game-over dialog once
   useEffect(() => {
@@ -125,7 +122,10 @@ function GamePage() {
       if (gameState === null || session === null) return;
       if (gameState.result.status !== "ongoing") return;
 
+      // squareIdx is always 0-63 (emitted by SquarePicker), but the type is Cell | undefined
+      // due to noUncheckedIndexedAccess. Guard once here so the rest uses Cell | null.
       const cell = gameState.board[squareIdx];
+      if (cell === undefined) return;
 
       if (selectedSquare !== null) {
         // Same square → deselect
@@ -263,23 +263,29 @@ function GamePage() {
           )}
         </Stack>
 
-        {/* Board */}
-        {renderingEngine.render({
-          gameState,
-          replayedMove,
-          facePlayer,
-          selectedSquare,
-          legalDestinations,
-          onSquareClick: handleSquareClick,
-        })}
+        {/* Board – 3D canvas container */}
+        <Box
+          sx={{
+            width: "min(900px, 92vw)",
+            aspectRatio: "1 / 1",
+            borderRadius: 2,
+            overflow: "hidden",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+          }}
+        >
+          {renderingEngine.render({
+            gameState,
+            replayedMove,
+            facePlayer,
+            selectedSquare,
+            legalDestinations,
+            onSquareClick: handleSquareClick,
+          })}
+        </Box>
 
         {/* Controls */}
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={() => void navigate({ to: "/" })}
-          >
+          <Button variant="outlined" size="small" onClick={() => void navigate({ to: "/" })}>
             ← Menu
           </Button>
           <Button
@@ -315,16 +321,16 @@ function GamePage() {
             </Typography>
             <Typography>
               <strong>Moving a Dude</strong> narrows its type to the piece types that could have
-              made that move. When only one type remains, the Dude{" "}
-              <em>materializes</em> into that piece.
+              made that move. When only one type remains, the Dude <em>materializes</em> into that
+              piece.
             </Typography>
             <Typography>
               <strong>King rule:</strong> If only one Dude can still be a King, it materializes
               immediately — the position always has a potential king.
             </Typography>
             <Typography>
-              <strong>Queen rule:</strong> At most one queen per side. If the queen is captured,
-              the queen candidate type becomes available again for Dudes.
+              <strong>Queen rule:</strong> At most one queen per side. If the queen is captured, the
+              queen candidate type becomes available again for Dudes.
             </Typography>
             <Typography>
               <strong>Castling:</strong> Any unmoved back-rank Dude that can still be a Rook may
@@ -366,38 +372,26 @@ function GamePage() {
           </Typography>
         </DialogContent>
         <DialogActions sx={{ justifyContent: "center", gap: 1, pb: 2 }}>
-          <Button
-            variant="contained"
-            onClick={() => void handleRestart()}
-          >
+          <Button variant="contained" onClick={() => void handleRestart()}>
             Play again
           </Button>
-          <Button
-            variant="outlined"
-            onClick={() => void navigate({ to: "/" })}
-          >
+          <Button variant="outlined" onClick={() => void navigate({ to: "/" })}>
             Main menu
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Restart confirmation */}
-      <Dialog
-        open={showRestartDialog}
-        onClose={() => setShowRestartDialog(false)}
-        maxWidth="xs"
-      >
+      <Dialog open={showRestartDialog} onClose={() => setShowRestartDialog(false)} maxWidth="xs">
         <DialogTitle>Restart game?</DialogTitle>
         <DialogContent>
-          <Typography>All moves will be lost. The board will reset to the starting position.</Typography>
+          <Typography>
+            All moves will be lost. The board will reset to the starting position.
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowRestartDialog(false)}>Cancel</Button>
-          <Button
-            onClick={() => void handleRestart()}
-            color="warning"
-            variant="contained"
-          >
+          <Button onClick={() => void handleRestart()} color="warning" variant="contained">
             Restart
           </Button>
         </DialogActions>

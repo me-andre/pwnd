@@ -1,5 +1,5 @@
 import { propagate } from "./candidates.js";
-import type { Cell, CastlingRights, GameState } from "./types.js";
+import type { CastlingRights, Cell, GameState } from "./types.js";
 import { ALL_DUDE_KINDS } from "./types.js";
 
 /** Return the initial GameState for a new game. */

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { algebraicToIndex } from "../src/squares.js";
 import {
   bishopSquares,
   dudeKindsForMove,
@@ -8,6 +7,7 @@ import {
   queenSquares,
   rookSquares,
 } from "../src/movement.js";
+import { algebraicToIndex } from "../src/squares.js";
 
 describe("rookSquares", () => {
   it("e4 has 14 squares on empty board", () => {

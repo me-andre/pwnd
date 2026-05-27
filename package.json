@@ -13,11 +13,20 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "build": "pnpm -r build",
-    "dev": "pnpm --filter client dev"
+    "dev": "pnpm --filter client dev",
+    "prepare-assets": "tsx tools/assets/prepare-textures.ts",
+    "vqa": "tsx tools/visual-qa/snapshot.ts",
+    "vqa:inspect-fbx": "node tools/assets/inspect-fbx.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.60.0",
+    "sharp": "^0.34.5",
+    "tsx": "^4.22.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["sharp"]
   }
 }

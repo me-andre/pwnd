@@ -63,7 +63,7 @@ export function buildState(literal: string): GameState {
     // Board rows: "8 . D . ..."
     const match = line.match(/^([1-8])\s+(.+)$/);
     if (!match) continue;
-    const rank = parseInt(match[1]!, 10);
+    const rank = Number.parseInt(match[1]!, 10);
     const rest = match[2]!;
     const tokens = tokenizeRow(rest);
 
@@ -143,7 +143,11 @@ function parseToken(token: string): Cell {
 
   if (matMap[token]) {
     const m = matMap[token]!;
-    return { kind: "materialized", owner: m.owner, piece: m.piece as import("../src/types.js").PieceKind };
+    return {
+      kind: "materialized",
+      owner: m.owner,
+      piece: m.piece as import("../src/types.js").PieceKind,
+    };
   }
 
   // Full-superposition dude
@@ -159,9 +163,7 @@ function parseToken(token: string): Cell {
   if (narrowedMatch) {
     const owner: Side = narrowedMatch[1] === "D" ? "white" : "black";
     const letters = narrowedMatch[2]!.toUpperCase().split("");
-    const candidates = letters.filter((l): l is DudeKind =>
-      ["R", "N", "B", "Q", "K"].includes(l),
-    );
+    const candidates = letters.filter((l): l is DudeKind => ["R", "N", "B", "Q", "K"].includes(l));
     return { kind: "dude", owner, localCandidates: candidates };
   }
 
@@ -180,6 +182,6 @@ function parseCastling(s: string): import("../src/types.js").CastlingRights {
 function parseEnPassant(s: string): number | null {
   if (s === "-" || s === "") return null;
   const file = s.charCodeAt(0) - "a".charCodeAt(0);
-  const rank = parseInt(s[1]!, 10) - 1;
+  const rank = Number.parseInt(s[1]!, 10) - 1;
   return rank * 8 + file;
 }

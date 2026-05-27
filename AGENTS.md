@@ -25,6 +25,12 @@ Biome (`biome.json` at root). Run `pnpm lint` before committing.
 ### Tests
 Vitest. Root config delegates to `packages/*/vitest.config.ts`. Run `pnpm test` from root.
 
+### Equality checks
+Always use `===` and `!==`. Never use `==` or `!=`. When a value may be `null | undefined`
+(e.g. from `noUncheckedIndexedAccess`), add a specific `=== undefined` guard first, then
+assert the remaining value with `!== null`. Name what you are checking — be as specific as
+the type allows rather than relying on falsy/truthy coercion.
+
 ### Style
 - Named-argument style for functions with ≥2 parameters: pass a single options object.
 - Prefer pure functions; avoid mutations.

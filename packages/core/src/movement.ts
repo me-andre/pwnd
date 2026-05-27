@@ -9,8 +9,8 @@
  * from A to B?" — answered by checking each type's reachable set.
  */
 
-import type { DudeKind, SquareIndex } from "./types.js";
 import { fileOf, offset, rankOf } from "./squares.js";
+import type { DudeKind, SquareIndex } from "./types.js";
 
 // ── Sliding helpers ───────────────────────────────────────────────────────────
 

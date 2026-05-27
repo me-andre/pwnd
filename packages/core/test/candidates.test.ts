@@ -92,7 +92,9 @@ describe("propagate — queen uniqueness / queen re-admission", () => {
       // Local candidates unchanged
       expect(dudeWithQueen.localCandidates).toContain("Q");
       // Effective candidates exclude Q
-      expect(effectiveCandidates(dudeWithQueen.localCandidates, withQueen.board, "white")).not.toContain("Q");
+      expect(
+        effectiveCandidates(dudeWithQueen.localCandidates, withQueen.board, "white"),
+      ).not.toContain("Q");
     }
 
     // Remove queen (simulating capture):
@@ -103,7 +105,9 @@ describe("propagate — queen uniqueness / queen re-admission", () => {
     expect(dudeAfter?.kind).toBe("dude");
     if (dudeAfter?.kind === "dude") {
       // Effective candidates should re-admit Q
-      expect(effectiveCandidates(dudeAfter.localCandidates, afterCapture.board, "white")).toContain("Q");
+      expect(effectiveCandidates(dudeAfter.localCandidates, afterCapture.board, "white")).toContain(
+        "Q",
+      );
     }
   });
 });
