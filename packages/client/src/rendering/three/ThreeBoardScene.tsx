@@ -327,6 +327,7 @@ function BoardSceneContent({
   facePlayer,
   selectedSquare,
   legalDestinations,
+  checkSquare,
   onSquareClick,
   tabletMode,
 }: RenderOptions) {
@@ -392,6 +393,11 @@ function BoardSceneContent({
       <group ref={boardGroupRef}>
         {/* Board mesh */}
         <BoardModel material={materials.board} />
+
+        {/* Check highlight — the king / king-candidate under attack */}
+        {checkSquare !== null && (
+          <SquareHighlight squareIdx={checkSquare} color="#e02929" opacity={0.6} />
+        )}
 
         {/* Selection highlight */}
         {selectedSquare !== null && (

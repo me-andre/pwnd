@@ -17,6 +17,7 @@ import {
   applyMove,
   createInitialState,
   findKingCandidateUnderAttack,
+  findMaterializedKing,
   getLegalMoves,
   isCheckmate,
   isInCheck,
@@ -217,9 +218,12 @@ function GamePage() {
 
   const isOver = gameState.result.status !== "ongoing";
   const inCheck = !isOver && isInCheck(gameState, currentSide);
-  const kingCandidateAttacked =
-    !isOver && findKingCandidateUnderAttack(gameState, currentSide) !== null;
-  const checkedOrCandidateAttacked = inCheck || kingCandidateAttacked;
+  const kingCandidateSquare = isOver ? null : findKingCandidateUnderAttack(gameState, currentSide);
+  const checkedOrCandidateAttacked = inCheck || kingCandidateSquare !== null;
+  // Square to tint red: the attacked king-candidate dude, or — failing that —
+  // the materialized king if it is in check.
+  const checkSquare =
+    kingCandidateSquare ?? (inCheck ? findMaterializedKing(gameState.board, currentSide) : null);
   const isMated = !isOver && isCheckmate(gameState, currentSide);
 
   const modeLabel: Record<GameMode, string> = {
@@ -290,6 +294,7 @@ function GamePage() {
             facePlayer,
             selectedSquare,
             legalDestinations,
+            checkSquare,
             onSquareClick: handleSquareClick,
             tabletMode: mode === "tablet",
           })}
