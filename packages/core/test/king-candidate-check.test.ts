@@ -1,24 +1,31 @@
 /**
- * Tests for the §2.8 king-candidate check mechanic:
+ * Tests for the king-candidate check mechanic.
  *
  * When an opponent attacks a dude whose effective candidate set contains king,
- * the dude becomes a "king-candidate under check". The owner must respond:
+ * that dude is a "king-candidate under check" — it might BE the king, so it may
+ * not be left under attack. The single legality rule:
  *
- *   Option A — The attacked dude itself makes a move incompatible with king
- *              (eliminates K from its local candidates). The dude is now proven
- *              NOT to be the king; the attack is resolved.
+ *   A move is permitted unless it leaves a dude that still carries K (or a
+ *   materialized king) under attack.
  *
- *   Option B — Anything else: block, capture the attacker, or the attacked
- *              dude moves king-compatibly. As a side-effect the attacked dude
- *              materializes as king.
+ * Crucially, resolving a check does NOT generally reveal the king:
  *
- * A move whose Option-B materialization leaves the (now real) king in check is
- * illegal, just like any move that leaves your king in check.
+ *   - Capturing the attacker leaves the threatened dudes in superposition.
+ *   - Blocking with another piece leaves them in superposition (any piece can
+ *     be shielded). It only collapses if narrowing/king-eager forces it.
+ *   - A king-ish evasion (a one-square move another piece could also make)
+ *     stays in superposition; it collapses to king only when ordinary geometry
+ *     leaves K as the sole candidate (then king-eager / singleton applies).
+ *
+ * The ONE forced collapse: if a dude that was under attack evades king-ishly
+ * (kept K, now safe) while OTHER dudes-with-K are still left under attack, the
+ * evader is forced to become the king. Becoming the king strips K from every
+ * friendly dude, dissolving the siblings' checks.
  *
  * IMPORTANT FIXTURE NOTE: a side with no materialized king and exactly one
  * dude still carrying K eagerly materializes that dude as king (king-eager
- * propagation). To keep a dude as a *king-candidate*, every fixture below gives
- * the side at least TWO king-candidate dudes, so neither collapses on parse.
+ * propagation). To keep a dude as a *king-candidate*, fixtures give the side at
+ * least TWO king-candidate dudes, so neither collapses on parse.
  */
 
 import { describe, expect, it } from "vitest";
@@ -28,6 +35,7 @@ import {
   getLegalMoves,
   isCheckmate,
 } from "../src/apply-move.js";
+import { effectiveCandidates } from "../src/candidates.js";
 import { algebraicToIndex } from "../src/squares.js";
 import { buildState } from "./state-builder.js";
 
@@ -145,12 +153,15 @@ describe("§2.8 Option A — attacked dude proves non-king and resolves the atta
   });
 });
 
-// ── Option B: block → attacked dude materializes as king ──────────────────────
+// ── Block → collapse only via king-eager (blocker forced off K) ───────────────
 
-describe("§2.8 Option B — blocking the attack materializes the attacked dude as king", () => {
-  it("another dude blocks the rook's line → attacked dude becomes king", () => {
-    // White rook on e1 attacks black dude on e8.
-    // Black dude on d7 blocks by moving to e7.
+describe("blocking the attack does not reveal the king directly", () => {
+  it("blocker steps onto the rook's line, sheds K, leaving the original as sole king", () => {
+    // White rook on e1 attacks black dude on e8. The only block squares are on
+    // the e-file, which the rook attacks — so the blocker (d7→e7) moves into the
+    // attack and sheds K ("под бой"). That leaves e8 as the sole king-candidate,
+    // which king-eager then materializes. The collapse is king-eager, not a
+    // forced reveal of the blocked dude.
     const state = buildState(`
       8 . . . . d . . .
       7 . . . d . . . .
@@ -173,7 +184,7 @@ describe("§2.8 Option B — blocking the attack materializes the attacked dude 
     }
   });
 
-  it("the forced king square is reported in materializedSquares", () => {
+  it("the king-eager square is reported in materializedSquares", () => {
     const state = buildState(`
       8 . . . . d . . .
       7 . . . d . . . .
@@ -189,14 +200,38 @@ describe("§2.8 Option B — blocking the attack materializes the attacked dude 
     const result = applyMove(state, { kind: "normal", from: sq("d7"), to: sq("e7") });
     expect(result.replayedMove.materializedSquares).toContain(sq("e8"));
   });
+
+  it("with a spare king-candidate, a block leaves everyone in superposition", () => {
+    // e8 (subject) is attacked by the rook on e1; d7 blocks via e7 (sheds K).
+    // A spare king-candidate sits safely on a4 (off the e-file and rank 1), so
+    // after the block TWO dudes still carry K (e8 shielded + a4 spare).
+    // King-eager does not fire and e8 stays a king-candidate dude.
+    const state = buildState(`
+      8 . . . . d . . .
+      7 . . . d . . . .
+      6 . . . . . . . .
+      5 . . . . . . . .
+      4 d . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("d7"), to: sq("e7") });
+    expect(result.accepted).toBe(true);
+    expect(result.nextState.board[sq("e8")]?.kind).toBe("dude");
+    expect(result.nextState.board[sq("a4")]?.kind).toBe("dude");
+  });
 });
 
-// ── Option B: capture attacker → attacked dude materializes as king ───────────
+// ── Capturing the attacker → threatened dudes stay in superposition ───────────
 
-describe("§2.8 Option B — capturing the attacker materializes the attacked dude as king", () => {
-  it("a rook captures the attacker → attacked dude becomes king", () => {
-    // White rook on e1 attacks black dude on e8.
-    // Black rook on h1 captures the white rook (path f1,g1 clear).
+describe("capturing the attacker leaves the threatened dude in superposition", () => {
+  it("a rook captures the attacker → attacked dude stays an undecided king-candidate", () => {
+    // White rook on e1 attacks black dude on e8. Black rook on h1 captures it
+    // (path f1,g1 clear). The threat is gone, so e8 need not prove anything: it
+    // (and the a8 spare) remain king-candidate dudes.
     const state = buildState(`
       8 d . . . d . . .
       7 . . . . . . . .
@@ -211,16 +246,18 @@ describe("§2.8 Option B — capturing the attacker materializes the attacked du
     `);
     const result = applyMove(state, { kind: "normal", from: sq("h1"), to: sq("e1") });
     expect(result.accepted).toBe(true);
-    const king = result.nextState.board[sq("e8")];
-    expect(king?.kind).toBe("materialized");
-    if (king?.kind === "materialized") {
-      expect(king.piece).toBe("K");
+    const cell = result.nextState.board[sq("e8")];
+    expect(cell?.kind).toBe("dude");
+    if (cell?.kind === "dude") {
+      expect(effectiveCandidates(cell.localCandidates, result.nextState.board, "black")).toContain(
+        "K",
+      );
     }
   });
 
-  it("a pawn captures the attacker → attacked dude becomes king", () => {
-    // White rook on d5 attacks black dude on d8 (d6,d7 clear).
-    // Black pawn on e6 captures the rook on d5.
+  it("a pawn captures the attacker → attacked dude stays an undecided king-candidate", () => {
+    // White rook on d5 attacks black dude on d8 (d6,d7 clear). Black pawn on e6
+    // captures the rook. d8 (and the a8 spare) stay king-candidate dudes.
     const state = buildState(`
       8 d . . d . . . .
       7 . . . . . . . .
@@ -235,20 +272,24 @@ describe("§2.8 Option B — capturing the attacker materializes the attacked du
     `);
     const result = applyMove(state, { kind: "normal", from: sq("e6"), to: sq("d5") });
     expect(result.accepted).toBe(true);
-    const king = result.nextState.board[sq("d8")];
-    expect(king?.kind).toBe("materialized");
-    if (king?.kind === "materialized") {
-      expect(king.piece).toBe("K");
+    const cell = result.nextState.board[sq("d8")];
+    expect(cell?.kind).toBe("dude");
+    if (cell?.kind === "dude") {
+      expect(effectiveCandidates(cell.localCandidates, result.nextState.board, "black")).toContain(
+        "K",
+      );
     }
   });
 });
 
-// ── Option B: king-compatible move → dude materializes as king ────────────────
+// ── King-ish evasion to safety → stays in superposition (no reveal) ───────────
 
-describe("§2.8 Option B — king-compatible move by the attacked dude materializes it as king", () => {
-  it("attacked dude steps one square diagonally off the attack line → king", () => {
-    // White rook on e1 attacks black dude on e8.
-    // e8 steps to d7 (one-square diagonal → {B,Q,K}); off the e-file, safe.
+describe("a king-ish evasion does not reveal the king when another piece could make it", () => {
+  it("attacked dude steps one square diagonally off the attack line → stays a dude", () => {
+    // White rook on e1 attacks black dude on e8. e8 steps to d7 (one-square
+    // diagonal → {B,Q,K}); off the e-file, safe. A bishop or queen could also
+    // have made that step, and no other king-candidate is left attacked (a8 is
+    // safe), so it stays an undecided king-candidate dude.
     const state = buildState(`
       8 d . . . d . . .
       7 . . . . . . . .
@@ -263,16 +304,19 @@ describe("§2.8 Option B — king-compatible move by the attacked dude materiali
     `);
     const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("d7") });
     expect(result.accepted).toBe(true);
-    const king = result.nextState.board[sq("d7")];
-    expect(king?.kind).toBe("materialized");
-    if (king?.kind === "materialized") {
-      expect(king.piece).toBe("K");
+    const cell = result.nextState.board[sq("d7")];
+    expect(cell?.kind).toBe("dude");
+    if (cell?.kind === "dude") {
+      expect(effectiveCandidates(cell.localCandidates, result.nextState.board, "black")).toContain(
+        "K",
+      );
     }
   });
 
-  it("attacked dude steps one square forward off the attack line → king", () => {
-    // White bishop on h5 attacks black dude on e8 (g6,f7 clear).
-    // e8 steps to e7 (one square forward → {R,Q,K}); off the bishop diagonal.
+  it("attacked dude steps one square forward off the attack line → stays a dude", () => {
+    // White bishop on h5 attacks black dude on e8 (g6,f7 clear). e8 steps to e7
+    // (one square forward → {R,Q,K}); off the diagonal, safe. A rook/queen could
+    // also make the step, so it stays a king-candidate dude.
     const state = buildState(`
       8 d . . . d . . .
       7 . . . . . . . .
@@ -287,10 +331,37 @@ describe("§2.8 Option B — king-compatible move by the attacked dude materiali
     `);
     const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("e7") });
     expect(result.accepted).toBe(true);
-    const king = result.nextState.board[sq("e7")];
-    expect(king?.kind).toBe("materialized");
-    if (king?.kind === "materialized") {
-      expect(king.piece).toBe("K");
+    const cell = result.nextState.board[sq("e7")];
+    expect(cell?.kind).toBe("dude");
+    if (cell?.kind === "dude") {
+      expect(effectiveCandidates(cell.localCandidates, result.nextState.board, "black")).toContain(
+        "K",
+      );
+    }
+  });
+
+  it("a king-ish evasion whose only matching candidate is K still materializes", () => {
+    // A {N,K} dude on e8 attacked by the rook on e1. Its one-square step to d7
+    // matches only K (a knight can't step one diagonal), so geometry collapses
+    // it to {K} → king. The a8 spare keeps it from collapsing on parse.
+    const state = buildState(`
+      8 d . . . d[nk] . . .
+      7 . . . . . . . .
+      6 . . . . . . . .
+      5 . . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("d7") });
+    expect(result.accepted).toBe(true);
+    const cell = result.nextState.board[sq("d7")];
+    expect(cell?.kind).toBe("materialized");
+    if (cell?.kind === "materialized") {
+      expect(cell.piece).toBe("K");
     }
   });
 });
@@ -298,9 +369,9 @@ describe("§2.8 Option B — king-compatible move by the attacked dude materiali
 // ── Legality: bad / non-resolving responses are illegal ───────────────────────
 
 describe("§2.8 legality — moves that leave the materialized king in check are rejected", () => {
-  it("an unrelated move is rejected because the forced king would be in check", () => {
+  it("an unrelated move is rejected because it leaves a king-candidate attacked", () => {
     // White rook on e1 attacks black dude on e8. Black pushes an unrelated pawn
-    // a7→a6: e8 is forced to materialize as king and is still in check.
+    // a7→a6: e8 is left under attack while still carrying K → illegal.
     const state = buildState(`
       8 d . . . d . . .
       7 p . . . . . . .
@@ -407,7 +478,8 @@ describe("§2.8 getLegalMoves filtering", () => {
   it("attacked dude: moves that resolve the attack are legal", () => {
     // White rook on e1 attacks e8.
     //  - f6 (knight): sheds K → legal.
-    //  - d7 (one-square diagonal, off e-file & safe): forced king on d7 → legal.
+    //  - d7 (one-square diagonal, off e-file & safe): stays a king-candidate
+    //    dude on a safe square → legal.
     //  - e7 (one-square forward, still on the e-file → attacked): a king cannot
     //    step into the rook's line, so the dude sheds K (moves as a rook/queen);
     //    the king identity passes to the a8 spare → legal.
@@ -432,7 +504,7 @@ describe("§2.8 getLegalMoves filtering", () => {
   it("a blocker's legal moves include only those that actually cover the attack", () => {
     // White rook on e1 attacks e8. Black dude d7:
     //  - e7 blocks the e-file → legal.
-    //  - c6 does not block → forced king on e8 still in check → illegal.
+    //  - c6 does not block → e8 left as an attacked king-candidate → illegal.
     const state = buildState(`
       8 . . . . d . . .
       7 . . . d . . . .
@@ -637,6 +709,112 @@ describe("moving a dude into an attacked square removes K", () => {
     expect(king?.kind).toBe("materialized");
     if (king?.kind === "materialized") {
       expect(king.piece).toBe("K");
+    }
+  });
+});
+
+// ── Fork: one attacker checks several king-candidates at once ─────────────────
+
+describe("fork — a single attacker checks multiple king-candidates", () => {
+  // White queen on e4 forks two black king-candidates: e8 (up the e-file) and
+  // a8 (up the e4–a8 diagonal). A black knight on c3 can capture the queen.
+  const forkBoard = `
+    8 d . . . d . . .
+    7 . . . . . . . .
+    6 . . . . . . . .
+    5 . . . . . . . .
+    4 . . . . Q . . .
+    3 . . n . . . . .
+    2 . . . . . . . .
+    1 K . . . . . . .
+    turn: black
+    castling: -
+  `;
+
+  it("both forked dudes are detected as king-candidates under attack", () => {
+    const state = buildState(forkBoard);
+    expect(findKingCandidateUnderAttack(state, "black")).not.toBeNull();
+    // e8 and a8 are both attacked king-candidates.
+    expect(getLegalMoves(state, sq("c3")).map((m) => m.to)).toContain(sq("e4"));
+  });
+
+  it("capturing the attacker leaves BOTH forked dudes in superposition", () => {
+    // The knight (not a king-candidate) captures the queen. Threat gone; neither
+    // dude is forced to reveal, so both stay king-candidate dudes.
+    const state = buildState(forkBoard);
+    const result = applyMove(state, { kind: "normal", from: sq("c3"), to: sq("e4") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+    for (const square of ["a8", "e8"] as const) {
+      const cell = board[sq(square)];
+      expect(cell?.kind).toBe("dude");
+      if (cell?.kind === "dude") {
+        expect(effectiveCandidates(cell.localCandidates, board, "black")).toContain("K");
+      }
+    }
+  });
+
+  it("a king-ish evasion by one forked dude crowns it and strips K from the sibling", () => {
+    // e8 steps to d7 (one-square diagonal, kept K, safe). a8 is still attacked,
+    // so the evader is forced to become the king — and a8 loses K.
+    const state = buildState(forkBoard);
+    const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("d7") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+    const king = board[sq("d7")];
+    expect(king?.kind).toBe("materialized");
+    if (king?.kind === "materialized") {
+      expect(king.piece).toBe("K");
+    }
+    const sibling = board[sq("a8")];
+    expect(sibling?.kind).toBe("dude");
+    if (sibling?.kind === "dude") {
+      expect(effectiveCandidates(sibling.localCandidates, board, "black")).not.toContain("K");
+    }
+    expect(result.replayedMove.materializedSquares).toContain(sq("d7"));
+  });
+
+  it("shedding K on one forked dude while the sibling stays attacked is illegal", () => {
+    // e8 jumps to f6 (knight, sheds K). a8 becomes the sole king-candidate via
+    // king-eager, but it is still attacked by the queen → illegal.
+    const state = buildState(forkBoard);
+    expect(getLegalMoves(state, sq("e8")).map((m) => m.to)).not.toContain(sq("f6"));
+    const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("f6") });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("an unrelated move that does not break the fork is illegal", () => {
+    // The knight wanders to b5 instead of capturing; both dudes stay attacked.
+    const state = buildState(forkBoard);
+    const result = applyMove(state, { kind: "normal", from: sq("c3"), to: sq("b5") });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("a forked dude that captures the attacker king-ishly keeps both in superposition", () => {
+    // White rook on a7 forks a8 (adjacent) and e7 (along rank 7). a8 captures
+    // the rook with a one-square move; the threat to e7 vanishes too, so no
+    // sibling is left attacked → no forced crown, both stay king-candidates.
+    const state = buildState(`
+      8 d . . . . . . .
+      7 R . . . d . . .
+      6 . . . . . . . .
+      5 . . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . . . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("a8"), to: sq("a7") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+    for (const square of ["a7", "e7"] as const) {
+      const cell = board[sq(square)];
+      expect(cell?.kind).toBe("dude");
+      if (cell?.kind === "dude") {
+        expect(effectiveCandidates(cell.localCandidates, board, "black")).toContain("K");
+      }
     }
   });
 });
