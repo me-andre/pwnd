@@ -24,16 +24,20 @@ import type {
 // ── Board query helpers ───────────────────────────────────────────────────────
 
 function isOccupied(board: ReadonlyArray<Cell>, sq: number): boolean {
-  return board[sq] !== null;
+  const cell = board[sq];
+  if (cell === undefined) return false;
+  return cell !== null;
 }
 
 function isFriendly(board: ReadonlyArray<Cell>, side: Side, sq: number): boolean {
   const cell = board[sq];
+  if (cell === undefined) return false;
   return cell !== null && cell.owner === side;
 }
 
 function isEnemy(board: ReadonlyArray<Cell>, side: Side, sq: number): boolean {
   const cell = board[sq];
+  if (cell === undefined) return false;
   return cell !== null && cell.owner !== side;
 }
 
@@ -46,7 +50,7 @@ function isEnemy(board: ReadonlyArray<Cell>, side: Side, sq: number): boolean {
  */
 export function getCandidateMoves(state: GameState, from: number): Move[] {
   const cell = state.board[from];
-  if (cell === null) return [];
+  if (cell === undefined || cell === null) return [];
 
   const side = cell.owner;
   const { board } = state;
@@ -159,7 +163,7 @@ export function getCastlingMoves(state: GameState, kingFrom: number, side: Side)
 
 function isValidCastlingPartner(state: GameState, sq: number, side: Side): boolean {
   const cell = state.board[sq];
-  if (cell === null || cell.owner !== side) return false;
+  if (cell === undefined || cell === null || cell.owner !== side) return false;
   if (cell.kind === "materialized") return cell.piece === "R";
   const eff = effectiveCandidates(cell.localCandidates, state.board, side);
   return eff.includes("R");
@@ -176,12 +180,8 @@ export function isInCheck(state: GameState, side: Side): boolean {
 export function findMaterializedKing(board: ReadonlyArray<Cell>, side: Side): number | null {
   for (let i = 0; i < 64; i++) {
     const cell = board[i];
-    if (
-      cell !== null &&
-      cell.kind === "materialized" &&
-      cell.owner === side &&
-      cell.piece === "K"
-    ) {
+    if (cell === undefined || cell === null) continue;
+    if (cell.kind === "materialized" && cell.owner === side && cell.piece === "K") {
       return i;
     }
   }
@@ -197,7 +197,7 @@ export function isSquareAttackedBy(state: GameState, square: number, attackingSi
   const { board } = state;
   for (let i = 0; i < 64; i++) {
     const cell = board[i];
-    if (cell === null || cell.owner !== attackingSide) continue;
+    if (cell === undefined || cell === null || cell.owner !== attackingSide) continue;
     const candidates = getCandidateMoves(state, i);
     if (candidates.some((m) => m.to === square)) return true;
   }
@@ -208,7 +208,9 @@ export function findKingCandidateUnderAttack(state: GameState, side: Side): numb
   const attackingSide: Side = side === "white" ? "black" : "white";
   for (let i = 0; i < 64; i++) {
     const cell = state.board[i];
-    if (cell === null || cell.kind !== "dude" || cell.owner !== side) continue;
+    if (cell === undefined || cell === null || cell.kind !== "dude" || cell.owner !== side) {
+      continue;
+    }
     const eff = effectiveCandidates(cell.localCandidates, state.board, side);
     if (!eff.includes("K")) continue;
     if (isSquareAttackedBy(state, i, attackingSide)) return i;
@@ -234,7 +236,7 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   const side: Side = state.turnNumber % 2 === 0 ? "white" : "black";
   const cell = board[move.from];
 
-  if (cell === null) return reject(state, move, "No piece at source");
+  if (cell === undefined || cell === null) return reject(state, move, "No piece at source");
   if (cell.owner !== side) return reject(state, move, "Not your piece");
 
   const legalMoves = getLegalMoves(state, move.from);
@@ -352,9 +354,10 @@ function executeCastling(state: GameState, move: Move, side: Side): ApplyMoveRes
 function executeEnPassant(state: GameState, move: Move, side: Side): ApplyMoveResult {
   const capturedPawnSquare = move.capturedPawnSquare!;
   const newBoard = [...state.board] as Cell[];
+  const mover = state.board[move.from] ?? null;
   newBoard[move.from] = null;
   newBoard[capturedPawnSquare] = null;
-  newBoard[move.to] = state.board[move.from];
+  newBoard[move.to] = mover;
 
   const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
 
@@ -385,7 +388,7 @@ function executeEnPassant(state: GameState, move: Move, side: Side): ApplyMoveRe
 
 export function getLegalMoves(state: GameState, from: number): Move[] {
   const cell = state.board[from];
-  if (cell === null) return [];
+  if (cell === undefined || cell === null) return [];
 
   const candidates = getCandidateMoves(state, from);
   return candidates.filter((move) => {
@@ -428,7 +431,7 @@ function simulateMoveOnBoard(board: Cell[], move: Move, side: Side): void {
 
   if (move.kind === "en-passant") {
     board[move.capturedPawnSquare!] = null;
-    board[move.to] = board[move.from];
+    board[move.to] = board[move.from] ?? null;
     board[move.from] = null;
     return;
   }
@@ -515,7 +518,7 @@ export function isCheckmate(state: GameState, side: Side): boolean {
 
   for (let i = 0; i < 64; i++) {
     const cell = state.board[i];
-    if (cell === null || cell.owner !== side) continue;
+    if (cell === undefined || cell === null || cell.owner !== side) continue;
     const legal = getLegalMoves(state, i);
     if (legal.length > 0) return false;
   }
