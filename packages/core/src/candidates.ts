@@ -98,7 +98,7 @@ export function propagatePass(
     innerChanged = false;
     for (let i = 0; i < 64; i++) {
       const cell = cells[i];
-      if (cell === null || cell.kind !== "dude") continue;
+      if (cell === undefined || cell === null || cell.kind !== "dude") continue;
       const eff = effectiveCandidates(cell.localCandidates, cells, cell.owner);
       if (eff.length === 0) continue; // illegal state
       if (eff.length === 1) {
@@ -118,7 +118,9 @@ export function propagatePass(
     const kingCandidates: number[] = [];
     for (let i = 0; i < 64; i++) {
       const cell = cells[i];
-      if (cell === null || cell.kind !== "dude" || cell.owner !== side) continue;
+      if (cell === undefined || cell === null || cell.kind !== "dude" || cell.owner !== side) {
+        continue;
+      }
       const eff = effectiveCandidates(cell.localCandidates, cells, side);
       if (eff.includes("K")) kingCandidates.push(i);
     }
@@ -136,7 +138,7 @@ export function propagatePass(
         for (let i = 0; i < 64; i++) {
           if (i === idx) continue;
           const c = cells[i];
-          if (c === null || c.kind !== "dude" || c.owner !== side) continue;
+          if (c === undefined || c === null || c.kind !== "dude" || c.owner !== side) continue;
           const eff = effectiveCandidates(c.localCandidates, cells, c.owner);
           if (eff.length === 1) {
             cells[i] = {
