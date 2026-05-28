@@ -1,8 +1,8 @@
 import type { Cell } from "@pwnd/core";
 import { effectiveCandidates } from "@pwnd/core";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Suspense, useCallback, useMemo, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { RenderOptions } from "../RenderingEngine.js";
@@ -302,6 +302,23 @@ function BoardModel({ material }: { material: THREE.MeshStandardMaterial }) {
   return <mesh geometry={boardGeo} material={material} receiveShadow castShadow />;
 }
 
+// ── Tablet camera setup ────────────────────────────────────────────────────────
+//
+// The orthographic canvas is created with the camera looking along -Z by
+// default.  This component runs once on mount and aims it at the board centre.
+//
+// Camera is placed at [12, 16, 0] — off to the h-file side and elevated — so
+// the board is viewed from above with a noticeable lateral tilt.  z=0 keeps
+// the view perfectly symmetric between white (z=+3.5) and black (z=-3.5).
+
+function TabletCameraSetup() {
+  const { camera } = useThree();
+  useEffect(() => {
+    camera.lookAt(0, 0, 0);
+  }, [camera]);
+  return null;
+}
+
 // ── Main scene content (inside Canvas, after Suspense) ────────────────────────
 
 function BoardSceneContent({
@@ -312,6 +329,7 @@ function BoardSceneContent({
   legalDestinations,
   checkSquare,
   onSquareClick,
+  tabletMode,
 }: RenderOptions) {
   const materials = useMaterials();
   const boardGroupRef = useRef<THREE.Group>(null);
@@ -352,18 +370,24 @@ function BoardSceneContent({
       {/* Ground shadow */}
       <ContactShadows position={[0, -0.5, 0]} opacity={0.5} scale={12} blur={2} far={4} />
 
-      {/* Orbit controls — ref forwarded to useAutoFacing so we can pull the
-          camera back to default position on each turn change. */}
-      <OrbitControls
-        ref={orbitControlsRef}
-        enablePan={false}
-        minDistance={7}
-        maxDistance={22}
-        minPolarAngle={0.15}
-        maxPolarAngle={Math.PI / 2 - 0.05}
-        enableDamping
-        dampingFactor={0.08}
-      />
+      {/* Tablet mode: fixed orthographic camera aimed at board centre. */}
+      {tabletMode && <TabletCameraSetup />}
+
+      {/* Orbit controls — only in non-tablet modes.  Ref forwarded to
+          useAutoFacing so the camera is pulled back to its default position
+          after each turn change. */}
+      {!tabletMode && (
+        <OrbitControls
+          ref={orbitControlsRef}
+          enablePan={false}
+          minDistance={7}
+          maxDistance={22}
+          minPolarAngle={0.15}
+          maxPolarAngle={Math.PI / 2 - 0.05}
+          enableDamping
+          dampingFactor={0.08}
+        />
+      )}
 
       {/* Auto-rotating board group */}
       <group ref={boardGroupRef}>
@@ -454,18 +478,44 @@ function BoardSceneContent({
 
 // ── Public component ──────────────────────────────────────────────────────────
 
+// Tablet: orthographic camera at [12, 16, 0], zoom=80.
+//   - Position is off the h-file side (x>0) and elevated, z=0 so both ranks
+//     are equally distant — giving the "almost symmetrical from above" look.
+//   - zoom=80 on a ~900 px square canvas → ±5.6 world-unit view window, which
+//     comfortably fits the 8×8 board (±3.5) plus piece heights.
+//   - TabletCameraSetup (inside Suspense) calls camera.lookAt(0,0,0) on mount
+//     because R3F's orthographic canvas defaults to looking along -Z.
+// Non-tablet: perspective camera as before, OrbitControls enabled.
+
 export function ThreeBoardScene(props: RenderOptions) {
+  const sharedCanvasProps = {
+    shadows: true,
+    gl: { antialias: true, alpha: false },
+  } as const;
+
+  const sceneContent = (
+    <>
+      <color attach="background" args={["#2a2a2c"]} />
+      <Suspense fallback={null}>
+        <BoardSceneContent {...props} />
+      </Suspense>
+    </>
+  );
+
+  if (props.tabletMode) {
+    return (
+      <div style={{ width: "100%", height: "100%", minHeight: 480 }}>
+        <Canvas orthographic camera={{ position: [12, 16, 0], zoom: 80 }} {...sharedCanvasProps}>
+          {sceneContent}
+        </Canvas>
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: "100%", height: "100%", minHeight: 480 }}>
-      <Canvas
-        camera={{ position: [0, 11, 9], fov: 45 }}
-        shadows
-        gl={{ antialias: true, alpha: false }}
-      >
-        <color attach="background" args={["#2a2a2c"]} />
-        <Suspense fallback={null}>
-          <BoardSceneContent {...props} />
-        </Suspense>
+      <Canvas camera={{ position: [0, 11, 9], fov: 45 }} {...sharedCanvasProps}>
+        {sceneContent}
       </Canvas>
     </div>
   );
