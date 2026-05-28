@@ -177,3 +177,39 @@ export function propagate(board: ReadonlyArray<Cell>): PropagateResult {
 
   return { board: current, materializedSquares: allMaterialized };
 }
+
+// ── King invariant ────────────────────────────────────────────────────────────
+
+/**
+ * Enforce the core invariant: each side must always have a king "alive",
+ * either materialized or still possible inside some dude. Concretely, for each
+ * side at least one of the following must hold:
+ *   - a materialized king is on the board, or
+ *   - at least one dude still has K in its effective candidate set.
+ *
+ * A side with no materialized king and zero king-candidate dudes is an
+ * impossible/illegal state that should never arise from legal play (king-eager
+ * propagation and move legality maintain it). Reaching it indicates a bug, so
+ * this throws rather than returning a result.
+ */
+export function assertKingInvariant(board: ReadonlyArray<Cell>): void {
+  for (const side of ["white", "black"] as Side[]) {
+    if (hasLiveKing(board, side)) continue;
+    let hasKingCandidate = false;
+    for (let i = 0; i < 64; i++) {
+      const cell = board[i];
+      if (cell === undefined || cell === null || cell.kind !== "dude" || cell.owner !== side) {
+        continue;
+      }
+      if (effectiveCandidates(cell.localCandidates, board, side).includes("K")) {
+        hasKingCandidate = true;
+        break;
+      }
+    }
+    if (!hasKingCandidate) {
+      throw new Error(
+        `King invariant violated: ${side} has no materialized king and no king-candidate dude`,
+      );
+    }
+  }
+}

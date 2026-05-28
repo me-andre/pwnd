@@ -1,4 +1,4 @@
-import { effectiveCandidates, propagate } from "./candidates.js";
+import { assertKingInvariant, effectiveCandidates, propagate } from "./candidates.js";
 import {
   bishopReachable,
   dudeKindsForMove,
@@ -453,6 +453,9 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
     return reject(state, move, "Move leaves king in check");
   }
 
+  // Guard the core invariant: the accepted state must keep a king alive.
+  assertKingInvariant(newState.board);
+
   const opponent: Side = side === "white" ? "black" : "white";
   const finalState = computeResult(newState, opponent);
 
@@ -524,6 +527,9 @@ function executeCastling(
     return reject(state, move, "Castling into check");
   }
 
+  // Guard the core invariant: the accepted state must keep a king alive.
+  assertKingInvariant(newState.board);
+
   const opponent: Side = side === "white" ? "black" : "white";
   const finalState = computeResult(newState, opponent);
 
@@ -579,6 +585,9 @@ function executeEnPassant(
   if (isInCheck(newState, side)) {
     return reject(state, move, "Move leaves king in check");
   }
+
+  // Guard the core invariant: the accepted state must keep a king alive.
+  assertKingInvariant(newState.board);
 
   const opponent: Side = side === "white" ? "black" : "white";
   const finalState = computeResult(newState, opponent);
