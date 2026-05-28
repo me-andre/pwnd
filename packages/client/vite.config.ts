@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  base: process.env["BASE_PATH"] ?? "/",
   plugins: [TanStackRouterVite({ target: "react", autoCodeSplitting: true }), react()],
   resolve: {
     alias: {
