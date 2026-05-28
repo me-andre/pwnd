@@ -218,6 +218,57 @@ export function findKingCandidateUnderAttack(state: GameState, side: Side): numb
   return null;
 }
 
+// ── King-candidate check resolution (§2.8) ───────────────────────────────────
+
+/**
+ * After a move has been applied and propagated, enforce the §2.8 rule:
+ * if a dude that was under attack as a king-candidate still has K in its
+ * effective candidate set, it must materialize as king.
+ *
+ * The only escape is Option A: the attacked dude itself made a move that
+ * eliminated K from its local candidates. Everything else is Option B:
+ * the dude collapses to king.
+ *
+ * `beforeAttackedSq` — square of the king-candidate that was under attack
+ *   BEFORE the move was made.
+ * `moveFrom` / `moveTo` — the move just executed, so we can track where the
+ *   attacked dude is now if it was the piece that moved.
+ *
+ * Returns the (possibly updated) board after cascading propagation, plus any
+ * newly materialized squares. When no forced materialization occurs the
+ * original board reference is returned with an empty array.
+ */
+function resolveKingCandidateCheck(
+  board: ReadonlyArray<Cell>,
+  side: Side,
+  beforeAttackedSq: number,
+  moveFrom: number,
+  moveTo: number,
+): { board: ReadonlyArray<Cell>; materializedSquares: number[] } {
+  // If the attacked dude itself moved, it is now at moveTo; otherwise it is
+  // still at beforeAttackedSq.
+  const nowAt = moveFrom === beforeAttackedSq ? moveTo : beforeAttackedSq;
+  const cell = board[nowAt];
+
+  // Already materialized by propagate (king-eager / singleton) or was
+  // captured — nothing left to do.
+  if (cell === null || cell.kind !== "dude") {
+    return { board, materializedSquares: [] };
+  }
+
+  const eff = effectiveCandidates(cell.localCandidates, board, side);
+  if (!eff.includes("K")) {
+    // Option A: this move eliminated K from the dude's effective candidates.
+    return { board, materializedSquares: [] };
+  }
+
+  // Option B: force-materialize as king.
+  const newBoard = [...board] as Cell[];
+  newBoard[nowAt] = { kind: "materialized", owner: side, piece: "K" };
+  const { board: cascaded, materializedSquares } = propagate(newBoard);
+  return { board: cascaded, materializedSquares: [nowAt, ...materializedSquares] };
+}
+
 // ── Apply move ────────────────────────────────────────────────────────────────
 
 export type ApplyMoveResult = {
@@ -239,6 +290,9 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   if (cell === undefined || cell === null) return reject(state, move, "No piece at source");
   if (cell.owner !== side) return reject(state, move, "Not your piece");
 
+  // Snapshot before the move for §2.8 resolution.
+  const beforeAttackedSq = findKingCandidateUnderAttack(state, side);
+
   const legalMoves = getLegalMoves(state, move.from);
   const isLegal = legalMoves.some(
     (m) =>
@@ -250,10 +304,10 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   if (!isLegal) return reject(state, move, "Illegal move");
 
   if (move.kind === "castling") {
-    return executeCastling(state, move, side);
+    return executeCastling(state, move, side, beforeAttackedSq);
   }
   if (move.kind === "en-passant") {
-    return executeEnPassant(state, move, side);
+    return executeEnPassant(state, move, side, beforeAttackedSq);
   }
 
   const newBoard = [...board] as Cell[];
@@ -280,8 +334,25 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   const newEnPassant = computeEnPassant(move, cell);
   const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
 
+  // §2.8: force-materialize the king-candidate if it wasn't proved non-king.
+  let finalBoard = propagatedBoard;
+  let allMaterialized = materializedSquares;
+  if (beforeAttackedSq !== null) {
+    const resolved = resolveKingCandidateCheck(
+      propagatedBoard,
+      side,
+      beforeAttackedSq,
+      move.from,
+      move.to,
+    );
+    if (resolved.materializedSquares.length > 0) {
+      finalBoard = resolved.board;
+      allMaterialized = [...materializedSquares, ...resolved.materializedSquares];
+    }
+  }
+
   const newState: GameState = {
-    board: propagatedBoard,
+    board: finalBoard,
     turnNumber: state.turnNumber + 1,
     moveLog: [...state.moveLog, move],
     castlingRights: newCastlingRights,
@@ -299,7 +370,7 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   return {
     nextState: finalState,
     accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares },
+    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
   };
 }
 
@@ -312,7 +383,12 @@ function reject(state: GameState, move: Move, reason: string): ApplyMoveResult {
   };
 }
 
-function executeCastling(state: GameState, move: Move, side: Side): ApplyMoveResult {
+function executeCastling(
+  state: GameState,
+  move: Move,
+  side: Side,
+  beforeAttackedSq: number | null,
+): ApplyMoveResult {
   const rookFrom = move.rookFrom!;
   const rookTo = move.rookTo!;
   const newBoard = [...state.board] as Cell[];
@@ -328,8 +404,26 @@ function executeCastling(state: GameState, move: Move, side: Side): ApplyMoveRes
   const newCastlingRights = revokeCastlingForSide(state.castlingRights, side);
   const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
 
+  // §2.8: a castling move by a different dude still triggers king-candidate
+  // materialization for any other dude that was under attack.
+  let finalBoard = propagatedBoard;
+  let allMaterialized = materializedSquares;
+  if (beforeAttackedSq !== null) {
+    const resolved = resolveKingCandidateCheck(
+      propagatedBoard,
+      side,
+      beforeAttackedSq,
+      move.from,
+      move.to,
+    );
+    if (resolved.materializedSquares.length > 0) {
+      finalBoard = resolved.board;
+      allMaterialized = [...materializedSquares, ...resolved.materializedSquares];
+    }
+  }
+
   const newState: GameState = {
-    board: propagatedBoard,
+    board: finalBoard,
     turnNumber: state.turnNumber + 1,
     moveLog: [...state.moveLog, move],
     castlingRights: newCastlingRights,
@@ -347,11 +441,16 @@ function executeCastling(state: GameState, move: Move, side: Side): ApplyMoveRes
   return {
     nextState: finalState,
     accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares },
+    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
   };
 }
 
-function executeEnPassant(state: GameState, move: Move, side: Side): ApplyMoveResult {
+function executeEnPassant(
+  state: GameState,
+  move: Move,
+  side: Side,
+  beforeAttackedSq: number | null,
+): ApplyMoveResult {
   const capturedPawnSquare = move.capturedPawnSquare!;
   const newBoard = [...state.board] as Cell[];
   const mover = state.board[move.from] ?? null;
@@ -361,8 +460,26 @@ function executeEnPassant(state: GameState, move: Move, side: Side): ApplyMoveRe
 
   const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
 
+  // §2.8: en-passant by another piece still triggers king-candidate
+  // materialization for any dude that was under attack.
+  let finalBoard = propagatedBoard;
+  let allMaterialized = materializedSquares;
+  if (beforeAttackedSq !== null) {
+    const resolved = resolveKingCandidateCheck(
+      propagatedBoard,
+      side,
+      beforeAttackedSq,
+      move.from,
+      move.to,
+    );
+    if (resolved.materializedSquares.length > 0) {
+      finalBoard = resolved.board;
+      allMaterialized = [...materializedSquares, ...resolved.materializedSquares];
+    }
+  }
+
   const newState: GameState = {
-    board: propagatedBoard,
+    board: finalBoard,
     turnNumber: state.turnNumber + 1,
     moveLog: [...state.moveLog, move],
     castlingRights: state.castlingRights,
@@ -380,7 +497,7 @@ function executeEnPassant(state: GameState, move: Move, side: Side): ApplyMoveRe
   return {
     nextState: finalState,
     accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares },
+    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
   };
 }
 
@@ -390,21 +507,41 @@ export function getLegalMoves(state: GameState, from: number): Move[] {
   const cell = state.board[from];
   if (cell === undefined || cell === null) return [];
 
+  const side = cell.owner;
+  // Snapshot which king-candidate is under attack BEFORE this move, so the
+  // §2.8 forced-materialization rule can be applied inside the simulation.
+  const beforeAttackedSq = findKingCandidateUnderAttack(state, side);
+
   const candidates = getCandidateMoves(state, from);
   return candidates.filter((move) => {
     const simBoard = [...state.board] as Cell[];
-    simulateMoveOnBoard(simBoard, move, cell.owner);
+    simulateMoveOnBoard(simBoard, move, side);
     const { board: propagated } = propagate(simBoard);
+
+    // §2.8: if a king-candidate was under attack, apply forced materialization
+    // unless the attacked dude proved it isn't a king with this move.
+    let finalBoard = propagated;
+    if (beforeAttackedSq !== null) {
+      const { board: resolved } = resolveKingCandidateCheck(
+        propagated,
+        side,
+        beforeAttackedSq,
+        move.from,
+        move.to,
+      );
+      finalBoard = resolved;
+    }
+
     const simState: GameState = {
       ...state,
-      board: propagated,
+      board: finalBoard,
       turnNumber: state.turnNumber + 1,
     };
 
     // Castling: must not pass through or land in check
     if (move.kind === "castling") {
       const passThrough = squaresBetween(move.from, move.to);
-      const attackingSide: Side = cell.owner === "white" ? "black" : "white";
+      const attackingSide: Side = side === "white" ? "black" : "white";
       for (const sq of [move.from, ...passThrough, move.to]) {
         if (isSquareAttackedBy({ ...state, board: state.board }, sq, attackingSide)) {
           return false;
@@ -412,7 +549,7 @@ export function getLegalMoves(state: GameState, from: number): Move[] {
       }
     }
 
-    return !isInCheck(simState, cell.owner);
+    return !isInCheck(simState, side);
   });
 }
 
