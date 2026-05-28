@@ -8,6 +8,12 @@ export interface RenderOptions {
   facePlayer: Side;
   selectedSquare: number | null;
   legalDestinations: number[];
+  /**
+   * Square of the piece currently under check for the side to move: a
+   * king-candidate dude under attack, or a materialized king in check. Rendered
+   * with a red tint. `null` when no one is in check.
+   */
+  checkSquare: number | null;
   onSquareClick: (squareIndex: number) => void;
 }
 
