@@ -218,6 +218,88 @@ export function findKingCandidateUnderAttack(state: GameState, side: Side): numb
   return null;
 }
 
+// ── "King cannot move into check" narrowing ───────────────────────────────────
+
+/**
+ * A king may never move to a square attacked by the opponent (the opponent
+ * could capture it on the next move). Therefore, when a dude voluntarily moves
+ * to a square that is attacked in the resulting position, it proves it is NOT
+ * the king and K is eliminated from its candidate set.
+ *
+ * Returns true if, after vacating `from` and placing `mover` on `to`, the
+ * square `to` is attacked by the opposing side.
+ */
+function destinationAttackedAfterMove({
+  board,
+  from,
+  to,
+  mover,
+  side,
+  enPassantTarget,
+}: {
+  board: ReadonlyArray<Cell>;
+  from: number;
+  to: number;
+  mover: Cell;
+  side: Side;
+  enPassantTarget: number | null;
+}): boolean {
+  const sim = [...board] as Cell[];
+  sim[from] = null;
+  sim[to] = mover;
+  const attackingSide: Side = side === "white" ? "black" : "white";
+  const probe: GameState = {
+    board: sim,
+    turnNumber: 0,
+    moveLog: [],
+    // Castling rights are irrelevant to raw attack detection and, left enabled,
+    // would spuriously count castling target squares as "attacked".
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    result: { status: "ongoing" },
+    enPassantTarget,
+  };
+  return isSquareAttackedBy(probe, to, attackingSide);
+}
+
+/**
+ * Narrow a dude's candidate set for the move `from → to`:
+ *   1. Intersect `candidates` with the move geometry.
+ *   2. Remove K if the destination is attacked (a king cannot move into check).
+ * Returns the narrowed set; an empty result means the move is illegal.
+ */
+function narrowDudeMove({
+  board,
+  from,
+  to,
+  mover,
+  candidates,
+  side,
+  enPassantTarget,
+}: {
+  board: ReadonlyArray<Cell>;
+  from: number;
+  to: number;
+  mover: Cell;
+  candidates: ReadonlyArray<DudeKind>;
+  side: Side;
+  enPassantTarget: number | null;
+}): DudeKind[] {
+  const geometry = dudeKindsForMove(from, to);
+  let narrowed = candidates.filter((k) => geometry.includes(k));
+  if (
+    narrowed.includes("K") &&
+    destinationAttackedAfterMove({ board, from, to, mover, side, enPassantTarget })
+  ) {
+    narrowed = narrowed.filter((k) => k !== "K");
+  }
+  return narrowed;
+}
+
 // ── King-candidate check resolution (§2.8) ───────────────────────────────────
 
 /**
@@ -321,9 +403,16 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
       localCandidates: ["R", "N", "B", "Q", "K"],
     };
   } else if (mover.kind === "dude") {
-    const geometryCandidates = dudeKindsForMove(move.from, move.to);
     const eff = effectiveCandidates(mover.localCandidates, board, side);
-    const narrowed: DudeKind[] = eff.filter((k) => geometryCandidates.includes(k));
+    const narrowed = narrowDudeMove({
+      board,
+      from: move.from,
+      to: move.to,
+      mover,
+      candidates: eff,
+      side,
+      enPassantTarget: state.enPassantTarget,
+    });
     if (narrowed.length === 0) return reject(state, move, "Move incompatible with all candidates");
     newBoard[move.to] = { ...mover, localCandidates: narrowed };
   } else {
@@ -514,8 +603,24 @@ export function getLegalMoves(state: GameState, from: number): Move[] {
 
   const candidates = getCandidateMoves(state, from);
   return candidates.filter((move) => {
+    // A dude that could only be a king cannot move into an attacked square. If
+    // narrowing eliminates every candidate, the move is outright illegal.
+    if (cell.kind === "dude" && move.kind === "normal") {
+      const eff = effectiveCandidates(cell.localCandidates, state.board, side);
+      const narrowed = narrowDudeMove({
+        board: state.board,
+        from: move.from,
+        to: move.to,
+        mover: cell,
+        candidates: eff,
+        side,
+        enPassantTarget: state.enPassantTarget,
+      });
+      if (narrowed.length === 0) return false;
+    }
+
     const simBoard = [...state.board] as Cell[];
-    simulateMoveOnBoard(simBoard, move, side);
+    simulateMoveOnBoard(simBoard, move, side, state.enPassantTarget);
     const { board: propagated } = propagate(simBoard);
 
     // §2.8: if a king-candidate was under attack, apply forced materialization
@@ -553,7 +658,12 @@ export function getLegalMoves(state: GameState, from: number): Move[] {
   });
 }
 
-function simulateMoveOnBoard(board: Cell[], move: Move, side: Side): void {
+function simulateMoveOnBoard(
+  board: Cell[],
+  move: Move,
+  side: Side,
+  enPassantTarget: number | null,
+): void {
   if (move.kind === "castling") {
     const kingCell = board[move.from];
     board[move.from] = null;
@@ -579,11 +689,29 @@ function simulateMoveOnBoard(board: Cell[], move: Move, side: Side): void {
   if (move.kind === "promotion") {
     board[move.to] = { kind: "dude", owner: side, localCandidates: ["R", "N", "B", "Q", "K"] };
   } else if (mover?.kind === "dude") {
-    const geom = dudeKindsForMove(move.from, move.to);
-    const narrowed = mover.localCandidates.filter((k) => geom.includes(k));
+    const narrowed = narrowDudeMove({
+      board,
+      from: move.from,
+      to: move.to,
+      mover,
+      candidates: mover.localCandidates,
+      side,
+      enPassantTarget,
+    });
+    // If narrowing emptied the set the move is illegal (rejected by
+    // getLegalMoves before reaching here); fall back to the geometry set so the
+    // simulated board still holds a valid occupant.
+    const geomFallback = mover.localCandidates.filter((k) =>
+      dudeKindsForMove(move.from, move.to).includes(k),
+    );
     board[move.to] = {
       ...mover,
-      localCandidates: narrowed.length > 0 ? narrowed : mover.localCandidates,
+      localCandidates:
+        narrowed.length > 0
+          ? narrowed
+          : geomFallback.length > 0
+            ? geomFallback
+            : mover.localCandidates,
     };
   } else {
     board[move.to] = mover ?? null;
