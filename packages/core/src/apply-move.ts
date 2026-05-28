@@ -252,7 +252,7 @@ function resolveKingCandidateCheck(
 
   // Already materialized by propagate (king-eager / singleton) or was
   // captured — nothing left to do.
-  if (cell === null || cell.kind !== "dude") {
+  if (cell === undefined || cell === null || cell.kind !== "dude") {
     return { board, materializedSquares: [] };
   }
 
