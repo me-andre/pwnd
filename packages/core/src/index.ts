@@ -39,6 +39,7 @@ export {
   effectiveCandidates,
   widestLocalCandidates,
   propagate,
+  assertKingInvariant,
 } from "./candidates.js";
 
 export { createInitialState } from "./initial-state.js";

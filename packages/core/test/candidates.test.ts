@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { effectiveCandidates, hasLiveQueen, propagate } from "../src/candidates.js";
+import {
+  assertKingInvariant,
+  effectiveCandidates,
+  hasLiveQueen,
+  propagate,
+} from "../src/candidates.js";
 import type { Cell } from "../src/types.js";
 import { buildState } from "./state-builder.js";
 
@@ -153,6 +158,43 @@ describe("propagate — king-eager", () => {
     const b1 = state.board[1];
     expect(a1?.kind).toBe("dude");
     expect(b1?.kind).toBe("dude");
+  });
+});
+
+describe("assertKingInvariant", () => {
+  it("does not throw when both sides have a materialized king", () => {
+    const board: Cell[] = Array(64).fill(null);
+    board[4] = { kind: "materialized", owner: "white", piece: "K" };
+    board[60] = { kind: "materialized", owner: "black", piece: "K" };
+    expect(() => assertKingInvariant(board)).not.toThrow();
+  });
+
+  it("does not throw when a side has a king-candidate dude instead of a king", () => {
+    const board: Cell[] = Array(64).fill(null);
+    board[4] = { kind: "materialized", owner: "white", piece: "K" };
+    // Black: no materialized king, but a dude that can still be king.
+    board[60] = { kind: "dude", owner: "black", localCandidates: ["R", "N", "K"] };
+    board[58] = { kind: "dude", owner: "black", localCandidates: ["R", "N", "K"] };
+    expect(() => assertKingInvariant(board)).not.toThrow();
+  });
+
+  it("throws when a side has no materialized king and no king-candidate dude", () => {
+    const board: Cell[] = Array(64).fill(null);
+    board[4] = { kind: "materialized", owner: "white", piece: "K" };
+    // Black: a dude that can never be king, and no materialized king.
+    board[60] = { kind: "dude", owner: "black", localCandidates: ["R", "N", "B"] };
+    expect(() => assertKingInvariant(board)).toThrow(/King invariant violated: black/);
+  });
+
+  it("treats a king globally excluded by a materialized king as not a candidate", () => {
+    // Black has a materialized king AND a dude whose local set still lists K.
+    // The dude's *effective* K is excluded, but the materialized king satisfies
+    // the invariant, so this is valid.
+    const board: Cell[] = Array(64).fill(null);
+    board[4] = { kind: "materialized", owner: "white", piece: "K" };
+    board[60] = { kind: "materialized", owner: "black", piece: "K" };
+    board[58] = { kind: "dude", owner: "black", localCandidates: ["R", "N", "K"] };
+    expect(() => assertKingInvariant(board)).not.toThrow();
   });
 });
 

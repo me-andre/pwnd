@@ -404,11 +404,13 @@ describe("§2.8 checkmate — no legal response to king-candidate check", () => 
 // ── getLegalMoves surface ─────────────────────────────────────────────────────
 
 describe("§2.8 getLegalMoves filtering", () => {
-  it("attacked dude: only moves that resolve the attack are legal", () => {
+  it("attacked dude: moves that resolve the attack are legal", () => {
     // White rook on e1 attacks e8.
     //  - f6 (knight): sheds K → legal.
-    //  - d7 (one-square diagonal): forced king on d7 (off e-file) → legal.
-    //  - e7 (one-square forward): forced king on e7 still on the e-file → illegal.
+    //  - d7 (one-square diagonal, off e-file & safe): forced king on d7 → legal.
+    //  - e7 (one-square forward, still on the e-file → attacked): a king cannot
+    //    step into the rook's line, so the dude sheds K (moves as a rook/queen);
+    //    the king identity passes to the a8 spare → legal.
     const state = buildState(`
       8 d . . . d . . .
       7 . . . . . . . .
@@ -424,7 +426,7 @@ describe("§2.8 getLegalMoves filtering", () => {
     const toSquares = getLegalMoves(state, sq("e8")).map((m) => m.to);
     expect(toSquares).toContain(sq("f6"));
     expect(toSquares).toContain(sq("d7"));
-    expect(toSquares).not.toContain(sq("e7"));
+    expect(toSquares).toContain(sq("e7"));
   });
 
   it("a blocker's legal moves include only those that actually cover the attack", () => {
@@ -527,5 +529,114 @@ describe("§2.8 interaction with propagate", () => {
       expect(cell.piece).toBe("K");
     }
     expect(findKingCandidateUnderAttack(state, "black")).toBeNull();
+  });
+});
+
+// ── "King cannot move into check": moving into an attacked square sheds K ─────
+
+describe("moving a dude into an attacked square removes K", () => {
+  it("a dude that steps into an attacked square sheds K (a king could not go there)", () => {
+    // Black dude c6 (king-candidate; h8 spare keeps it from eager-collapsing)
+    // steps to c5, which is attacked by the white rook on a5. A king could not
+    // move into the rook's line, so the dude proves it is not the king: K is
+    // removed and it stays a {R,Q} dude.
+    const state = buildState(`
+      8 . . . . . . . d
+      7 . . . . . . . .
+      6 . . d . . . . .
+      5 R . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . . . . K
+      turn: black
+      castling: -
+    `);
+    expect(findKingCandidateUnderAttack(state, "black")).toBeNull(); // not yet a check
+    const result = applyMove(state, { kind: "normal", from: sq("c6"), to: sq("c5") });
+    expect(result.accepted).toBe(true);
+    const cell = result.nextState.board[sq("c5")];
+    expect(cell?.kind).toBe("dude");
+    if (cell?.kind === "dude") {
+      expect(cell.localCandidates).not.toContain("K");
+      expect(cell.localCandidates).toEqual(expect.arrayContaining(["R", "Q"]));
+    }
+  });
+
+  it("a dude that steps onto a SAFE square keeps K (and here materializes as king)", () => {
+    // Same shape, but c6 is a {N,K} dude stepping to c7 (a safe square). The
+    // only candidate compatible with a one-square move is K, and c7 is not
+    // attacked, so it materializes as king.
+    const state = buildState(`
+      8 . . . . . . . d
+      7 . . . . . . . .
+      6 . . d[nk] . . . . .
+      5 R . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . . . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("c6"), to: sq("c7") });
+    expect(result.accepted).toBe(true);
+    const cell = result.nextState.board[sq("c7")];
+    expect(cell?.kind).toBe("materialized");
+    if (cell?.kind === "materialized") {
+      expect(cell.piece).toBe("K");
+    }
+  });
+
+  it("a dude whose only move-compatible candidate is K cannot step into an attacked square", () => {
+    // A {N,K} dude on c6: a one-square step matches only K. Stepping to c5
+    // (attacked by the a5 rook) would require it to be a king moving into check,
+    // which is illegal — so the move is rejected and not offered as legal.
+    const state = buildState(`
+      8 . . . . . . . d
+      7 . . . . . . . .
+      6 . . d[nk] . . . . .
+      5 R . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . . . . K
+      turn: black
+      castling: -
+    `);
+    const toSquares = getLegalMoves(state, sq("c6")).map((m) => m.to);
+    expect(toSquares).not.toContain(sq("c5"));
+    const result = applyMove(state, { kind: "normal", from: sq("c6"), to: sq("c5") });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("a king-candidate under check escapes by stepping into the attack as a rook/queen", () => {
+    // White rook e1 attacks e8 (king-candidate check). e8 steps to e7 — still on
+    // the e-file, so a king could not go there. The dude sheds K (moves as a
+    // rook/queen) and the king identity passes to the a8 spare. Legal.
+    const state = buildState(`
+      8 d . . . d . . .
+      7 . . . . . . . .
+      6 . . . . . . . .
+      5 . . . . . . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("e8"), to: sq("e7") });
+    expect(result.accepted).toBe(true);
+    const moved = result.nextState.board[sq("e7")];
+    expect(moved?.kind).toBe("dude");
+    if (moved?.kind === "dude") {
+      expect(moved.localCandidates).not.toContain("K");
+    }
+    const king = result.nextState.board[sq("a8")];
+    expect(king?.kind).toBe("materialized");
+    if (king?.kind === "materialized") {
+      expect(king.piece).toBe("K");
+    }
   });
 });
