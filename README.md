@@ -1,5 +1,4 @@
 # Pawn and Dude
-## Чувак и Пешка
 
 A chess variant where all non-pawn pieces start as **Dudes** — pieces in quantum-like superposition over the five standard non-pawn types (Rook, Knight, Bishop, Queen, King). A Dude's identity is revealed gradually through movement.
 

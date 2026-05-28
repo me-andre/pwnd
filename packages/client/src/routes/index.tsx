@@ -41,9 +41,6 @@ function MainMenu() {
           <Typography variant="h2" fontWeight={700} gutterBottom>
             ♟ Pawn and Dude
           </Typography>
-          <Typography variant="h6" color="text.secondary">
-            Чувак и Пешка
-          </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 400 }}>
             A chess variant where all non-pawn pieces start as undefined "dudes" in superposition.
             They reveal their true identity through movement.
