@@ -15,8 +15,8 @@ import {
 } from "@mui/material";
 import {
   applyMove,
+  attackedKingCandidates,
   createInitialState,
-  findKingCandidateUnderAttack,
   findMaterializedKing,
   getLegalMoves,
   isCheckmate,
@@ -218,12 +218,15 @@ function GamePage() {
 
   const isOver = gameState.result.status !== "ongoing";
   const inCheck = !isOver && isInCheck(gameState, currentSide);
-  const kingCandidateSquare = isOver ? null : findKingCandidateUnderAttack(gameState, currentSide);
-  const checkedOrCandidateAttacked = inCheck || kingCandidateSquare !== null;
-  // Square to tint red: the attacked king-candidate dude, or — failing that —
-  // the materialized king if it is in check.
-  const checkSquare =
-    kingCandidateSquare ?? (inCheck ? findMaterializedKing(gameState.board, currentSide) : null);
+  // Every piece under check: each attacked king-candidate dude, plus the
+  // materialized king if it is in check. One attacker can fork several at once.
+  const checkSquares = isOver
+    ? []
+    : [
+        ...attackedKingCandidates(gameState, currentSide),
+        ...(inCheck ? [findMaterializedKing(gameState.board, currentSide)] : []),
+      ].filter((sq): sq is number => sq !== null);
+  const checkedOrCandidateAttacked = checkSquares.length > 0;
   const isMated = !isOver && isCheckmate(gameState, currentSide);
 
   const modeLabel: Record<GameMode, string> = {
@@ -294,7 +297,7 @@ function GamePage() {
             facePlayer,
             selectedSquare,
             legalDestinations,
-            checkSquare,
+            checkSquares,
             onSquareClick: handleSquareClick,
             tabletMode: mode === "tablet",
           })}
