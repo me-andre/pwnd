@@ -9,6 +9,11 @@ export interface RenderOptions {
   selectedSquare: number | null;
   legalDestinations: number[];
   onSquareClick: (squareIndex: number) => void;
+  /**
+   * When true, renders with an orthographic camera looking at the board from
+   * the rank-numbers side (symmetric for both players, no OrbitControls).
+   */
+  tabletMode: boolean;
 }
 
 export interface RenderingEngine {

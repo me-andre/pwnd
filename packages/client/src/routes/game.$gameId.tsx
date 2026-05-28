@@ -291,6 +291,7 @@ function GamePage() {
             selectedSquare,
             legalDestinations,
             onSquareClick: handleSquareClick,
+            tabletMode: mode === "tablet",
           })}
         </Box>
 
