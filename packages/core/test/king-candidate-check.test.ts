@@ -159,7 +159,7 @@ describe("blocking the attack does not reveal the king directly", () => {
   it("blocker steps onto the rook's line, sheds K, leaving the original as sole king", () => {
     // White rook on e1 attacks black dude on e8. The only block squares are on
     // the e-file, which the rook attacks — so the blocker (d7→e7) moves into the
-    // attack and sheds K ("под бой"). That leaves e8 as the sole king-candidate,
+    // attack and sheds K (under-attack narrowing). That leaves e8 as the sole king-candidate,
     // which king-eager then materializes. The collapse is king-eager, not a
     // forced reveal of the blocked dude.
     const state = buildState(`

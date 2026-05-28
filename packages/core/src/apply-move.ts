@@ -333,7 +333,7 @@ function narrowDudeMove({
  * also make. Such resolutions leave the dudes in superposition.
  *
  * The exception: if a dude that was under attack EVADES in a king-ish manner
- * (it moved and kept K — so it now sits safe; "под бой" narrowing guarantees a
+ * (it moved and kept K — so it now sits safe; under-attack narrowing guarantees a
  * dude that kept K is on a safe square), and OTHER dudes-with-K are still left
  * under attack, then the evader is forced to become the king. Becoming the king
  * strips K from every friendly dude, which dissolves the remaining checks (the
