@@ -101,7 +101,7 @@ function extractNormalizedGeo(
 }
 
 export function useFbxGeometries(): FbxGeometries {
-  const fbx = useFBX("/models/chess_lp.fbx");
+  const fbx = useFBX(`${import.meta.env.BASE_URL}models/chess_lp.fbx`);
 
   return useMemo(() => {
     // Rotate the entire FBX scene 90° CW around Y once, before extracting any

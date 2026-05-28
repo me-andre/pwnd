@@ -20,6 +20,7 @@ type SevenTextures = [
 
 export function useMaterials(): ChessMaterials {
   // Cast to tuple: useTexture is Suspense-based and only returns when all textures are ready.
+  const base = import.meta.env.BASE_URL;
   const [
     boardBaseColor,
     boardNormal,
@@ -29,13 +30,13 @@ export function useMaterials(): ChessMaterials {
     pieceNormal,
     pieceOrm,
   ] = useTexture([
-    "/textures/chess_lp/board_basecolor.webp",
-    "/textures/chess_lp/board_normal.webp",
-    "/textures/chess_lp/board_orm.webp",
-    "/textures/chess_lp/pieces_white_basecolor.webp",
-    "/textures/chess_lp/pieces_black_basecolor.webp",
-    "/textures/chess_lp/pieces_normal.webp",
-    "/textures/chess_lp/pieces_orm.webp",
+    `${base}textures/chess_lp/board_basecolor.webp`,
+    `${base}textures/chess_lp/board_normal.webp`,
+    `${base}textures/chess_lp/board_orm.webp`,
+    `${base}textures/chess_lp/pieces_white_basecolor.webp`,
+    `${base}textures/chess_lp/pieces_black_basecolor.webp`,
+    `${base}textures/chess_lp/pieces_normal.webp`,
+    `${base}textures/chess_lp/pieces_orm.webp`,
   ]) as SevenTextures;
 
   return useMemo(() => {
