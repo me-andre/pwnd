@@ -75,5 +75,7 @@ export {
   findMaterializedKing,
   isSquareAttackedBy,
   findKingCandidateUnderAttack,
+  attackedKingCandidates,
+  sideInCheck,
   applyMove,
 } from "./apply-move.js";

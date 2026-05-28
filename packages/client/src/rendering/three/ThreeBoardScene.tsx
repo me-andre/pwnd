@@ -327,7 +327,7 @@ function BoardSceneContent({
   facePlayer,
   selectedSquare,
   legalDestinations,
-  checkSquare,
+  checkSquares,
   onSquareClick,
   tabletMode,
 }: RenderOptions) {
@@ -394,10 +394,10 @@ function BoardSceneContent({
         {/* Board mesh */}
         <BoardModel material={materials.board} />
 
-        {/* Check highlight — the king / king-candidate under attack */}
-        {checkSquare !== null && (
-          <SquareHighlight squareIdx={checkSquare} color="#e02929" opacity={0.6} />
-        )}
+        {/* Check highlights — every king / king-candidate under attack */}
+        {checkSquares.map((squareIdx) => (
+          <SquareHighlight key={squareIdx} squareIdx={squareIdx} color="#e02929" opacity={0.6} />
+        ))}
 
         {/* Selection highlight */}
         {selectedSquare !== null && (

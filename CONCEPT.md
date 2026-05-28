@@ -80,13 +80,23 @@ After every move:
 
 ### 2.8 Check and king-candidate resolution
 
-When an opposing piece attacks a dude whose effective candidate set contains king, the dude becomes a **king-candidate under check**. The attacking side's move ends, and on the next ply of the attacked dude's owner the attack must be resolved (as with check in standard chess).
+When an opposing piece attacks a dude whose effective candidate set contains king, that dude is a **king-candidate under check** — it might *be* the king, so the position is not allowed to leave it under attack. A single attacker may fork several king-candidates at once.
 
-The resolution rule is:
+The governing rule is a single legality constraint:
 
-- The attacked dude **will materialize as king** unless its owner "proves otherwise". The only way to prove otherwise is for **the attacked dude itself** to make a move that is incompatible with king — i.e., a move that eliminates king from its local candidate set (for example, any straight or diagonal move of more than one square, or a knight-shaped move). Doing so sheds king-candidacy and resolves the attack because the dude is now known not to be the king.
-- Any other legal resolution of the attack — blocking with another piece, capturing the attacker with another piece, or moving the attacked dude one square to safety (consistent with king) — does not contradict the attacked dude being a king. As a side-effect of such a resolution, the attacked dude **materializes as king**.
-- If no legal resolution exists, the position is **checkmate** (see 2.9).
+- **A move is permitted unless it leaves a dude that still carries king (or a materialized king) under attack.** Standard check on a materialized king is just the case where the side has already collapsed to a real king.
+
+So a check on king-candidate(s) must be resolved by a move that ends with *no* king-carrying dude attacked. The usual options are: capture the attacker, block the line with another piece, or move an attacked dude to safety. If no such move exists, the position is **checkmate** (see 2.9).
+
+Resolving a check generally does **not** reveal the king — superposition is preserved:
+
+- **Capturing the attacker** with any piece leaves the threatened dudes as undecided king-candidates.
+- **Blocking** with another piece does not reveal the king (any piece can be shielded). It only collapses indirectly: e.g. a blocker that steps onto the attacked line sheds its own king (see 2.5), which can leave a sibling as the *sole* king-candidate that king-eager then materializes.
+- **A king-ish evasion** — moving an attacked dude one square to safety — does not by itself reveal the king, because a rook/bishop/queen could have made the same step. It collapses to king only when ordinary geometry leaves king as the **sole** matching candidate.
+
+There is exactly **one forced materialization** specific to check resolution:
+
+- If a dude that was under attack **evades king-ishly** (it moved, kept king, and now sits safe) while **other** king-carrying dudes are *still left under attack*, that evader is **forced to become the king**. Becoming the king strips king from every friendly dude, which dissolves the siblings' checks (they are no longer king-candidates). This is the move that resolves a fork by declaring "the one that escaped is the king".
 
 Once a king has materialized, standard chess king rules apply from that point on: the king cannot move into check, cannot be captured, and any move that would leave the king in check is illegal.
 

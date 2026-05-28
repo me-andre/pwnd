@@ -9,11 +9,12 @@ export interface RenderOptions {
   selectedSquare: number | null;
   legalDestinations: number[];
   /**
-   * Square of the piece currently under check for the side to move: a
-   * king-candidate dude under attack, or a materialized king in check. Rendered
-   * with a red tint. `null` when no one is in check.
+   * Squares of every piece currently under check for the side to move: each
+   * king-candidate dude under attack, plus a materialized king in check. A
+   * single attacker can fork several at once. All are rendered with a red tint.
+   * Empty when no one is in check.
    */
-  checkSquare: number | null;
+  checkSquares: number[];
   onSquareClick: (squareIndex: number) => void;
   /**
    * When true, renders with an orthographic camera looking at the board from
