@@ -101,6 +101,8 @@ Resolving a check generally does **not** reveal the king — superposition is pr
 
 Only *newly created* attacks shed king this way. A **standing check** — an attack already present at the start of the turn — is not silently dismissed; it must be actively resolved. And you may not expose every king-carrier at once: a move that would leave the side with no possible king is illegal.
 
+The active and passive cases can fire on the **same move**: a dude-with-K that steps onto an attacked square (active) while simultaneously unshielding a sibling dude-with-K (passive) makes *both* shed king. As long as some other dude-with-K (or a materialized king) survives, the move is legal and that survivor carries the king. But if the mover and the sibling were the side's last two king-candidates, both shedding king would leave no king — so the move is **illegal**. (If instead the mover steps to a *safe* square, it keeps king and, as the sole remaining candidate, simply becomes the king while the unshielded sibling sheds.)
+
 There is exactly **one forced materialization** specific to check resolution:
 
 - If a dude that was under attack **evades king-ishly** (it moved, kept king, and now sits safe) while **other** king-carrying dudes are *still left under attack*, that evader is **forced to become the king**. Becoming the king strips king from every friendly dude, which dissolves the siblings' checks (they are no longer king-candidates). This is the move that resolves a fork by declaring "the one that escaped is the king".
