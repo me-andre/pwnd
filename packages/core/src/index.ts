@@ -40,6 +40,7 @@ export {
   widestLocalCandidates,
   propagate,
   assertKingInvariant,
+  sideHasKing,
 } from "./candidates.js";
 
 export { createInitialState } from "./initial-state.js";

@@ -91,8 +91,15 @@ So a check on king-candidate(s) must be resolved by a move that ends with *no* k
 Resolving a check generally does **not** reveal the king — superposition is preserved:
 
 - **Capturing the attacker** with any piece leaves the threatened dudes as undecided king-candidates.
-- **Blocking** with another piece does not reveal the king (any piece can be shielded). It only collapses indirectly: e.g. a blocker that steps onto the attacked line sheds its own king (see 2.5), which can leave a sibling as the *sole* king-candidate that king-eager then materializes.
+- **Blocking** with another piece does not reveal the king (any piece can be shielded). It only collapses indirectly: e.g. a blocker that steps onto the attacked line sheds its own king (under-attack narrowing, below), which can leave a sibling as the *sole* king-candidate that king-eager then materializes.
 - **A king-ish evasion** — moving an attacked dude one square to safety — does not by itself reveal the king, because a rook/bishop/queen could have made the same step. It collapses to king only when ordinary geometry leaves king as the **sole** matching candidate.
+
+**Under-attack narrowing.** A king may not stand on an attacked square, so a dude that ends a move under attack sheds king — declaring it is not the king. This happens two ways:
+
+- *Actively*, when a dude **moves onto** an attacked square.
+- *Passively*, when **this** move newly exposes a dude to attack without it moving — e.g. by moving away its shield (a discovered/unshielded attack).
+
+Only *newly created* attacks shed king this way. A **standing check** — an attack already present at the start of the turn — is not silently dismissed; it must be actively resolved. And you may not expose every king-carrier at once: a move that would leave the side with no possible king is illegal.
 
 There is exactly **one forced materialization** specific to check resolution:
 
