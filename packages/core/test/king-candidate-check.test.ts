@@ -908,3 +908,105 @@ describe("unshielding a dude-with-K under attack sheds K", () => {
     expect(result.accepted).toBe(false);
   });
 });
+
+// ── A king-candidate mover that both unshields a sibling and self-exposes ─────
+
+describe("a dude-with-K that unshields a sibling while moving itself under attack", () => {
+  // Shared geometry (white to move):
+  //   - white dude M on e4 shields white dude S on e8 from the black rook on e1.
+  //   - black rook on d1 covers the d-file (so d4 is attacked).
+  //   M makes a one-square king-ish step e4→d4. This:
+  //     1. opens the e-file → S is newly attacked → S sheds K (passive), AND
+  //     2. lands M on d4, which is attacked → M sheds K (active under-attack).
+  //   Both the mover and the unshielded sibling are about to lose K.
+
+  it("with a third king-candidate spare, BOTH the mover and the sibling shed K", () => {
+    // a8 spare survives to carry the king (king-eager crowns it). Legal.
+    const state = buildState(`
+      8 D . . . D . . .
+      7 . . . . . . . .
+      6 k . . . . . . .
+      5 . . . . . . . .
+      4 . . . . D . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . r r . . .
+      turn: white
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("e4"), to: sq("d4") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+
+    // Mover sheds K (it stepped onto an attacked square → {R,Q}).
+    const mover = board[sq("d4")];
+    expect(mover?.kind).toBe("dude");
+    if (mover?.kind === "dude") {
+      expect(effectiveCandidates(mover.localCandidates, board, "white")).not.toContain("K");
+    }
+    // Unshielded sibling sheds K too.
+    const sibling = board[sq("e8")];
+    expect(sibling?.kind).toBe("dude");
+    if (sibling?.kind === "dude") {
+      expect(effectiveCandidates(sibling.localCandidates, board, "white")).not.toContain("K");
+    }
+    // The spare is now the sole king-candidate → materialized king.
+    const spare = board[sq("a8")];
+    expect(spare?.kind).toBe("materialized");
+    if (spare?.kind === "materialized") {
+      expect(spare.piece).toBe("K");
+    }
+  });
+
+  it("if the mover and the sibling are the last two king-candidates, the move is illegal", () => {
+    // No spare: the mover sheds K (self-exposed) and the sibling sheds K
+    // (unshielded), so nobody is left to be the king → illegal.
+    const state = buildState(`
+      8 . . . . D . . .
+      7 . . . . . . . .
+      6 k . . . . . . .
+      5 . . . . . . . .
+      4 . . . . D . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . r r . . .
+      turn: white
+      castling: -
+    `);
+    expect(getLegalMoves(state, sq("e4")).map((m) => m.to)).not.toContain(sq("d4"));
+    const result = applyMove(state, { kind: "normal", from: sq("e4"), to: sq("d4") });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("if the mover stays safe it keeps K and becomes the king; only the sibling sheds K", () => {
+    // Same last-two-dudes position, but M steps to f4 (a SAFE square off the
+    // e-file). M keeps K and, as the sole remaining king-candidate, materializes
+    // as the king; the unshielded sibling sheds K. Legal even without a spare.
+    const state = buildState(`
+      8 . . . . D . . .
+      7 . . . . . . . .
+      6 k . . . . . . .
+      5 . . . . . . . .
+      4 . . . . D . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . r r . . .
+      turn: white
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("e4"), to: sq("f4") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+
+    const mover = board[sq("f4")];
+    expect(mover?.kind).toBe("materialized");
+    if (mover?.kind === "materialized") {
+      expect(mover.piece).toBe("K");
+    }
+    const sibling = board[sq("e8")];
+    expect(sibling?.kind).toBe("dude");
+    if (sibling?.kind === "dude") {
+      expect(effectiveCandidates(sibling.localCandidates, board, "white")).not.toContain("K");
+    }
+  });
+});
