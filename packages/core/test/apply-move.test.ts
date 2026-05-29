@@ -173,22 +173,8 @@ describe("applyMove — check and king safety", () => {
   });
 
   it("isInCheck detects check on materialized king", () => {
+    // Black rook on e8 attacks the white king on e1 down the open e-file.
     const state = buildState(`
-      8 . . . . . . . .
-      7 . . . . . . . .
-      6 . . . . . . . .
-      5 . . . . . . . .
-      4 . . . . . . . .
-      3 . . . . . . . .
-      2 . . . . . . . .
-      1 . . . . K . . r
-      turn: white
-      castling: -
-    `);
-    // Construct a fake state where white king is on e1 and black rook attacks e-file
-    // Actually in the board above, black rook is on h1, king on e1 — not in check
-    // Let's put rook on e8 attacking e1
-    const state2 = buildState(`
       8 . . . . r . . .
       7 . . . . . . . .
       6 . . . . . . . .
@@ -200,7 +186,7 @@ describe("applyMove — check and king safety", () => {
       turn: black
       castling: -
     `);
-    expect(isInCheck(state2, "white")).toBe(true);
+    expect(isInCheck(state, "white")).toBe(true);
   });
 });
 
