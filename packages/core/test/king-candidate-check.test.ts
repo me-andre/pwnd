@@ -818,3 +818,93 @@ describe("fork — a single attacker checks multiple king-candidates", () => {
     }
   });
 });
+
+// ── Passive narrowing: unshielding a dude-with-K sheds K ──────────────────────
+
+describe("unshielding a dude-with-K under attack sheds K", () => {
+  it("moving a friendly blocker that exposes a king-candidate makes it shed K", () => {
+    // Black rook on e5 shields the e8 dude from the white rook on e1. Sliding it
+    // to a5 opens the e-file: e8 is newly attacked, so it sheds K (declaring it
+    // is not the king). The a8 spare keeps the side's king. Legal.
+    const state = buildState(`
+      8 d . . . d . . .
+      7 . . . . . . . .
+      6 . . . . . . . .
+      5 . . . . r . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    // No standing check yet — e8 is shielded.
+    expect(findKingCandidateUnderAttack(state, "black")).toBeNull();
+    expect(getLegalMoves(state, sq("e5")).map((m) => m.to)).toContain(sq("a5"));
+
+    const result = applyMove(state, { kind: "normal", from: sq("e5"), to: sq("a5") });
+    expect(result.accepted).toBe(true);
+    const board = result.nextState.board;
+    const exposed = board[sq("e8")];
+    expect(exposed?.kind).toBe("dude");
+    if (exposed?.kind === "dude") {
+      expect(effectiveCandidates(exposed.localCandidates, board, "black")).not.toContain("K");
+    }
+    // With e8 proven non-king, the a8 spare is the sole king-candidate and
+    // king-eager materializes it.
+    const spare = board[sq("a8")];
+    expect(spare?.kind).toBe("materialized");
+    if (spare?.kind === "materialized") {
+      expect(spare.piece).toBe("K");
+    }
+  });
+
+  it("shedding K on an unshield can collapse the dude to a singleton", () => {
+    // e8 is an {N,K} dude. Opening the e-file exposes it; it sheds K, leaving
+    // {N} → it materializes as a knight (reported in materializedSquares).
+    const state = buildState(`
+      8 d . . . d[nk] . . .
+      7 . . . . . . . .
+      6 . . . . . . . .
+      5 . . . . r . . .
+      4 . . . . . . . .
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    const result = applyMove(state, { kind: "normal", from: sq("e5"), to: sq("a5") });
+    expect(result.accepted).toBe(true);
+    const knight = result.nextState.board[sq("e8")];
+    expect(knight?.kind).toBe("materialized");
+    if (knight?.kind === "materialized") {
+      expect(knight.piece).toBe("N");
+    }
+    expect(result.replayedMove.materializedSquares).toContain(sq("e8"));
+  });
+
+  it("a move that exposes EVERY king-candidate at once is illegal", () => {
+    // The black knight on e4 shields two king-candidates: e8 (from the rook on
+    // e1, up the e-file) and h4 (from the rook on a4, along rank 4). Any knight
+    // move vacates e4 and opens BOTH lines — both dudes would shed K, leaving
+    // black with no king. Illegal.
+    const state = buildState(`
+      8 . . . . d . . .
+      7 . . . . . . . .
+      6 . . . . . . . .
+      5 . . . . . . . .
+      4 R . . . n . . d
+      3 . . . . . . . .
+      2 . . . . . . . .
+      1 . . . . R . . K
+      turn: black
+      castling: -
+    `);
+    // Both are shielded right now, so there is no standing check.
+    expect(findKingCandidateUnderAttack(state, "black")).toBeNull();
+    expect(getLegalMoves(state, sq("e4"))).toHaveLength(0);
+    const result = applyMove(state, { kind: "normal", from: sq("e4"), to: sq("c3") });
+    expect(result.accepted).toBe(false);
+  });
+});

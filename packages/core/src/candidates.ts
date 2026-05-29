@@ -192,21 +192,27 @@ export function propagate(board: ReadonlyArray<Cell>): PropagateResult {
  * propagation and move legality maintain it). Reaching it indicates a bug, so
  * this throws rather than returning a result.
  */
+/**
+ * True if `side` still has a king somewhere: a materialized king or at least
+ * one dude that can still be the king (effective candidates include K).
+ */
+export function sideHasKing(board: ReadonlyArray<Cell>, side: Side): boolean {
+  if (hasLiveKing(board, side)) return true;
+  for (let i = 0; i < 64; i++) {
+    const cell = board[i];
+    if (cell === undefined || cell === null || cell.kind !== "dude" || cell.owner !== side) {
+      continue;
+    }
+    if (effectiveCandidates(cell.localCandidates, board, side).includes("K")) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function assertKingInvariant(board: ReadonlyArray<Cell>): void {
   for (const side of ["white", "black"] as Side[]) {
-    if (hasLiveKing(board, side)) continue;
-    let hasKingCandidate = false;
-    for (let i = 0; i < 64; i++) {
-      const cell = board[i];
-      if (cell === undefined || cell === null || cell.kind !== "dude" || cell.owner !== side) {
-        continue;
-      }
-      if (effectiveCandidates(cell.localCandidates, board, side).includes("K")) {
-        hasKingCandidate = true;
-        break;
-      }
-    }
-    if (!hasKingCandidate) {
+    if (!sideHasKing(board, side)) {
       throw new Error(
         `King invariant violated: ${side} has no materialized king and no king-candidate dude`,
       );
