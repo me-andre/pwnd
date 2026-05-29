@@ -41,12 +41,12 @@ function isEnemy(board: ReadonlyArray<Cell>, side: Side, sq: number): boolean {
   return cell !== null && cell.owner !== side;
 }
 
-// ── Legal-move generation ─────────────────────────────────────────────────────
+// ── Candidate-move generation (§2.3 step 1, §2.5) ─────────────────────────────
 
 /**
- * Return all candidate destination squares for the piece / dude at `from`.
- * Does NOT filter moves that leave the mover's king in check — use
- * `getLegalMoves` for that.
+ * §2.3 step 1: enumerate the moves the piece / dude at `from` could physically
+ * make (the geometry, plus §2.5 castling). Does NOT apply the §2.3/§2.8
+ * legality filter — use `getLegalMoves` / `isMoveAllowed` for that.
  */
 export function getCandidateMoves(state: GameState, from: number): Move[] {
   const cell = state.board[from];
@@ -124,6 +124,7 @@ export function getCandidateMoves(state: GameState, from: number): Move[] {
   return moves;
 }
 
+/** §2.5: castling candidates — any back-rank dude/rook with R as partner. */
 export function getCastlingMoves(state: GameState, kingFrom: number, side: Side): Move[] {
   const moves: Move[] = [];
   const backRank = side === "white" ? 0 : 7;
@@ -161,6 +162,7 @@ export function getCastlingMoves(state: GameState, kingFrom: number, side: Side)
   return moves;
 }
 
+/** §2.5: a castling partner is any back-rank cell that still could be a rook. */
 function isValidCastlingPartner(state: GameState, sq: number, side: Side): boolean {
   const cell = state.board[sq];
   if (cell === undefined || cell === null || cell.owner !== side) return false;
@@ -169,8 +171,9 @@ function isValidCastlingPartner(state: GameState, sq: number, side: Side): boole
   return eff.includes("R");
 }
 
-// ── Check detection ───────────────────────────────────────────────────────────
+// ── Check detection (§2.8) ────────────────────────────────────────────────────
 
+/** §2.8: a materialized king attacked is check, the classic case. */
 export function isInCheck(state: GameState, side: Side): boolean {
   const kingSquare = findMaterializedKing(state.board, side);
   if (kingSquare === null) return false;
@@ -240,7 +243,7 @@ export function sideInCheck(state: GameState, side: Side): boolean {
   return attackedKingCandidates(state, side).length > 0;
 }
 
-// ── "King cannot move into check" narrowing ───────────────────────────────────
+// ── §2.8 active under-attack narrowing ("a king cannot move into check") ──────
 
 /**
  * A king may never move to a square attacked by the opponent (the opponent
@@ -322,7 +325,7 @@ function narrowDudeMove({
   return narrowed;
 }
 
-// ── King-candidate check resolution ──────────────────────────────────────────
+// ── §2.8 check resolution (passive shed + forced fork-crown) ──────────────────
 
 /**
  * Passive "under-attack" narrowing. Symmetric to the active rule (a dude that
@@ -425,6 +428,235 @@ function resolveForkCrown(
   return { board: cascaded, materializedSquares: [moveTo, ...materializedSquares] };
 }
 
+// ── Geometry: the one board edit (§2.3 apply, §2.5 castling) ──────────────────
+
+/**
+ * Apply a move's board edits and return the resulting board (pre-propagation).
+ * The single source of truth for "where pieces land":
+ *   - normal: move the occupant; a dude narrows its candidate set (§2.3 step 4,
+ *     incl. the §2.8 active "moved onto attacked square sheds K" narrowing).
+ *   - promotion: the moved pawn becomes a fresh widest-set dude (§2.4).
+ *   - castling: king-dude materializes as K and the partner as R (§2.5).
+ *   - en-passant: the captured pawn is removed and the pawn lands on `to`.
+ *
+ * Pure: never mutates the input board.
+ */
+function applyMoveGeometry({
+  board,
+  move,
+  side,
+  enPassantTarget,
+}: {
+  board: ReadonlyArray<Cell>;
+  move: Move;
+  side: Side;
+  enPassantTarget: number | null;
+}): Cell[] {
+  const newBoard = [...board] as Cell[];
+
+  if (move.kind === "castling") {
+    const kingCell = newBoard[move.from];
+    newBoard[move.from] = null;
+    newBoard[move.to] =
+      kingCell !== undefined && kingCell !== null && kingCell.kind === "dude"
+        ? { kind: "materialized", owner: side, piece: "K" }
+        : (kingCell ?? null);
+    newBoard[move.rookFrom!] = null;
+    newBoard[move.rookTo!] = { kind: "materialized", owner: side, piece: "R" };
+    return newBoard;
+  }
+
+  if (move.kind === "en-passant") {
+    const mover = newBoard[move.from] ?? null;
+    newBoard[move.from] = null;
+    newBoard[move.capturedPawnSquare!] = null;
+    newBoard[move.to] = mover;
+    return newBoard;
+  }
+
+  const mover = newBoard[move.from];
+  newBoard[move.from] = null;
+
+  if (move.kind === "promotion") {
+    newBoard[move.to] = { kind: "dude", owner: side, localCandidates: ["R", "N", "B", "Q", "K"] };
+  } else if (mover !== undefined && mover !== null && mover.kind === "dude") {
+    const eff = effectiveCandidates(mover.localCandidates, board, side);
+    const narrowed = narrowDudeMove({
+      board,
+      from: move.from,
+      to: move.to,
+      mover,
+      candidates: eff,
+      side,
+      enPassantTarget,
+    });
+    newBoard[move.to] = { ...mover, localCandidates: narrowed };
+  } else {
+    newBoard[move.to] = mover ?? null;
+  }
+
+  return newBoard;
+}
+
+// ── Superposition resolution (§2.7 propagate → §2.8 shed → §2.8 fork-crown) ───
+
+/**
+ * Run the full per-ply resolution on a post-geometry board:
+ *   1. §2.7 global propagation (singleton / king-eager materialization).
+ *   2. §2.8 passive under-attack narrowing (newly exposed dudes shed K).
+ *   3. §2.8 forced fork-crown (a king-ish evader becomes the king when other
+ *      king-candidates remain under attack).
+ * Returns the resolved board and every square materialized along the way.
+ */
+function resolveSuperposition({
+  state,
+  board,
+  side,
+  beforeAttacked,
+  move,
+}: {
+  state: GameState;
+  board: ReadonlyArray<Cell>;
+  side: Side;
+  beforeAttacked: ReadonlySet<number>;
+  move: Move;
+}): { board: ReadonlyArray<Cell>; materializedSquares: number[] } {
+  const { board: propagatedBoard, materializedSquares } = propagate(board);
+  const shed = shedUnshieldedKingCandidates(state, propagatedBoard, side, beforeAttacked, move.to);
+  const resolved = resolveForkCrown(state, shed.board, side, beforeAttacked, move.from, move.to);
+  return {
+    board: resolved.board,
+    materializedSquares: [
+      ...materializedSquares,
+      ...shed.materializedSquares,
+      ...resolved.materializedSquares,
+    ],
+  };
+}
+
+/**
+ * The shared "apply then resolve" pipeline: §2.3 board edit followed by the
+ * §2.7/§2.8 resolution. Used by both `isMoveAllowed` (legality) and `applyMove`
+ * (the accepted result) so the two can never diverge.
+ */
+function simulateMove({
+  state,
+  move,
+  side,
+  beforeAttacked,
+}: {
+  state: GameState;
+  move: Move;
+  side: Side;
+  beforeAttacked: ReadonlySet<number>;
+}): { board: ReadonlyArray<Cell>; materializedSquares: number[] } {
+  const board = applyMoveGeometry({
+    board: state.board,
+    move,
+    side,
+    enPassantTarget: state.enPassantTarget,
+  });
+  return resolveSuperposition({ state, board, side, beforeAttacked, move });
+}
+
+// ── §2.x legality predicates ──────────────────────────────────────────────────
+
+/**
+ * §2.3 step 3: a dude's move must keep at least one candidate. Intersecting the
+ * effective set with the move geometry (and shedding K when the destination is
+ * attacked) must leave a non-empty set. Non-dude moves and non-normal moves
+ * carry no such constraint.
+ */
+function moveNarrowsToSomeCandidate({
+  state,
+  move,
+  side,
+}: {
+  state: GameState;
+  move: Move;
+  side: Side;
+}): boolean {
+  const cell = state.board[move.from];
+  if (cell === undefined || cell === null) return false;
+  if (cell.kind !== "dude" || move.kind !== "normal") return true;
+  const eff = effectiveCandidates(cell.localCandidates, state.board, side);
+  const narrowed = narrowDudeMove({
+    board: state.board,
+    from: move.from,
+    to: move.to,
+    mover: cell,
+    candidates: eff,
+    side,
+    enPassantTarget: state.enPassantTarget,
+  });
+  return narrowed.length > 0;
+}
+
+/**
+ * §2.5 king-safety: the castling king may not start in, pass through, or land
+ * on an attacked square. Evaluated against the pre-move board.
+ */
+function castlingPathClearOfCheck({
+  state,
+  move,
+  side,
+}: {
+  state: GameState;
+  move: Move;
+  side: Side;
+}): boolean {
+  const attackingSide: Side = side === "white" ? "black" : "white";
+  const passThrough = squaresBetween(move.from, move.to);
+  for (const sq of [move.from, ...passThrough, move.to]) {
+    if (isSquareAttackedBy(state, sq, attackingSide)) return false;
+  }
+  return true;
+}
+
+/**
+ * §2.2/§2.8 king-presence gate: a move may not leave the side with no possible
+ * king. Delegates to `sideHasKing` (materialized king or a dude that still
+ * carries K).
+ */
+function willLeaveAtLeastOneKing({
+  board,
+  side,
+}: {
+  board: ReadonlyArray<Cell>;
+  side: Side;
+}): boolean {
+  return sideHasKing(board, side);
+}
+
+/**
+ * The declarative legality rule, one step per §2.x:
+ *   §2.3 the dude's move must narrow to some candidate.
+ *   §2.5 castling must not cross an attacked square.
+ *   §2.8 after resolving, no king-carrier may be left under attack.
+ *   §2.2/§2.8 a king must remain on the side.
+ */
+function isMoveAllowed({
+  state,
+  move,
+  side,
+  beforeAttacked,
+}: {
+  state: GameState;
+  move: Move;
+  side: Side;
+  beforeAttacked: ReadonlySet<number>;
+}): boolean {
+  if (!moveNarrowsToSomeCandidate({ state, move, side })) return false; // §2.3
+  if (move.kind === "castling" && !castlingPathClearOfCheck({ state, move, side })) {
+    return false; // §2.5
+  }
+  const { board } = simulateMove({ state, move, side, beforeAttacked }); // §2.3 + §2.7 + §2.8
+  const next: GameState = { ...state, board, turnNumber: state.turnNumber + 1 };
+  if (sideInCheck(next, side)) return false; // §2.8: no king-carrier left under attack
+  if (!willLeaveAtLeastOneKing({ board, side })) return false; // §2.2/§2.8: a king must remain
+  return true;
+}
+
 // ── Apply move ────────────────────────────────────────────────────────────────
 
 export type ApplyMoveResult = {
@@ -446,68 +678,30 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   if (cell === undefined || cell === null) return reject(state, move, "No piece at source");
   if (cell.owner !== side) return reject(state, move, "Not your piece");
 
-  // Snapshot which king-candidates are under attack before the move.
+  // Snapshot which king-candidates are under attack before the move, so the
+  // fork-crown rule can fire inside the shared simulation.
   const beforeAttacked = new Set(attackedKingCandidates(state, side));
 
-  const legalMoves = getLegalMoves(state, move.from);
-  const isLegal = legalMoves.some(
-    (m) =>
-      m.from === move.from &&
-      m.to === move.to &&
-      m.kind === move.kind &&
-      m.rookFrom === move.rookFrom,
-  );
-  if (!isLegal) return reject(state, move, "Illegal move");
-
-  if (move.kind === "castling") {
-    return executeCastling(state, move, side, beforeAttacked);
-  }
-  if (move.kind === "en-passant") {
-    return executeEnPassant(state, move, side, beforeAttacked);
+  if (!isMoveAllowed({ state, move, side, beforeAttacked })) {
+    return reject(state, move, "Illegal move");
   }
 
-  const newBoard = [...board] as Cell[];
-  const mover = newBoard[move.from]!;
-  newBoard[move.from] = null;
+  // Build the accepted result from the SAME pipeline legality used.
+  const { board: finalBoard, materializedSquares } = simulateMove({
+    state,
+    move,
+    side,
+    beforeAttacked,
+  });
 
-  if (move.kind === "promotion") {
-    newBoard[move.to] = {
-      kind: "dude",
-      owner: side,
-      localCandidates: ["R", "N", "B", "Q", "K"],
-    };
-  } else if (mover.kind === "dude") {
-    const eff = effectiveCandidates(mover.localCandidates, board, side);
-    const narrowed = narrowDudeMove({
-      board,
-      from: move.from,
-      to: move.to,
-      mover,
-      candidates: eff,
-      side,
-      enPassantTarget: state.enPassantTarget,
-    });
-    if (narrowed.length === 0) return reject(state, move, "Move incompatible with all candidates");
-    newBoard[move.to] = { ...mover, localCandidates: narrowed };
-  } else {
-    newBoard[move.to] = mover;
-  }
-
-  const newCastlingRights = updateCastlingRights(state.castlingRights, move, cell, side);
+  // Metadata folds uniformly: castling revokes the side's rights; everything
+  // else runs the corner/king tracking. `computeEnPassant` yields null for
+  // castling and en-passant, so both share the normal path.
+  const newCastlingRights =
+    move.kind === "castling"
+      ? revokeCastlingForSide(state.castlingRights, side)
+      : updateCastlingRights(state.castlingRights, move, cell, side);
   const newEnPassant = computeEnPassant(move, cell);
-  const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
-
-  // Passive narrowing: dudes newly exposed to attack by this move shed K.
-  const shed = shedUnshieldedKingCandidates(state, propagatedBoard, side, beforeAttacked, move.to);
-  // Forced collapse: an attacked dude that evaded king-ishly becomes the king
-  // when other king-candidates remain under attack (resolving them).
-  const resolved = resolveForkCrown(state, shed.board, side, beforeAttacked, move.from, move.to);
-  const finalBoard = resolved.board;
-  const allMaterialized = [
-    ...materializedSquares,
-    ...shed.materializedSquares,
-    ...resolved.materializedSquares,
-  ];
 
   const newState: GameState = {
     board: finalBoard,
@@ -518,13 +712,6 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
     enPassantTarget: newEnPassant,
   };
 
-  if (sideInCheck(newState, side)) {
-    return reject(state, move, "Move leaves a king-candidate under check");
-  }
-  if (!sideHasKing(newState.board, side)) {
-    return reject(state, move, "Move exposes every king-candidate at once");
-  }
-
   // Guard the core invariant: the accepted state must keep a king alive.
   assertKingInvariant(newState.board);
 
@@ -534,7 +721,7 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
   return {
     nextState: finalState,
     accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
+    replayedMove: { status: "accepted", move, materializedSquares },
   };
 }
 
@@ -547,125 +734,7 @@ function reject(state: GameState, move: Move, reason: string): ApplyMoveResult {
   };
 }
 
-function executeCastling(
-  state: GameState,
-  move: Move,
-  side: Side,
-  beforeAttacked: ReadonlySet<number>,
-): ApplyMoveResult {
-  const rookFrom = move.rookFrom!;
-  const rookTo = move.rookTo!;
-  const newBoard = [...state.board] as Cell[];
-
-  const kingCell = newBoard[move.from]!;
-  newBoard[move.from] = null;
-  newBoard[move.to] =
-    kingCell.kind === "dude" ? { kind: "materialized", owner: side, piece: "K" } : kingCell;
-
-  newBoard[rookFrom] = null;
-  newBoard[rookTo] = { kind: "materialized", owner: side, piece: "R" };
-
-  const newCastlingRights = revokeCastlingForSide(state.castlingRights, side);
-  const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
-
-  // Passive narrowing: dudes newly exposed by the king/rook move shed K.
-  const shed = shedUnshieldedKingCandidates(state, propagatedBoard, side, beforeAttacked, move.to);
-  // Castling materializes the king-dude as king directly; the fork-crown rule
-  // applies if any other dude was left attacked (the king now strips their K).
-  const resolved = resolveForkCrown(state, shed.board, side, beforeAttacked, move.from, move.to);
-  const finalBoard = resolved.board;
-  const allMaterialized = [
-    ...materializedSquares,
-    ...shed.materializedSquares,
-    ...resolved.materializedSquares,
-  ];
-
-  const newState: GameState = {
-    board: finalBoard,
-    turnNumber: state.turnNumber + 1,
-    moveLog: [...state.moveLog, move],
-    castlingRights: newCastlingRights,
-    result: { status: "ongoing" },
-    enPassantTarget: null,
-  };
-
-  if (sideInCheck(newState, side)) {
-    return reject(state, move, "Castling into check");
-  }
-  if (!sideHasKing(newState.board, side)) {
-    return reject(state, move, "Move exposes every king-candidate at once");
-  }
-
-  // Guard the core invariant: the accepted state must keep a king alive.
-  assertKingInvariant(newState.board);
-
-  const opponent: Side = side === "white" ? "black" : "white";
-  const finalState = computeResult(newState, opponent);
-
-  return {
-    nextState: finalState,
-    accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
-  };
-}
-
-function executeEnPassant(
-  state: GameState,
-  move: Move,
-  side: Side,
-  beforeAttacked: ReadonlySet<number>,
-): ApplyMoveResult {
-  const capturedPawnSquare = move.capturedPawnSquare!;
-  const newBoard = [...state.board] as Cell[];
-  const mover = state.board[move.from] ?? null;
-  newBoard[move.from] = null;
-  newBoard[capturedPawnSquare] = null;
-  newBoard[move.to] = mover;
-
-  const { board: propagatedBoard, materializedSquares } = propagate(newBoard);
-
-  // Passive narrowing: dudes newly exposed by vacating the from-square shed K.
-  const shed = shedUnshieldedKingCandidates(state, propagatedBoard, side, beforeAttacked, move.to);
-  // A pawn making the en-passant capture is never a king-candidate, so the
-  // fork-crown only matters if the capture removed a forked dude's attacker.
-  const resolved = resolveForkCrown(state, shed.board, side, beforeAttacked, move.from, move.to);
-  const finalBoard = resolved.board;
-  const allMaterialized = [
-    ...materializedSquares,
-    ...shed.materializedSquares,
-    ...resolved.materializedSquares,
-  ];
-
-  const newState: GameState = {
-    board: finalBoard,
-    turnNumber: state.turnNumber + 1,
-    moveLog: [...state.moveLog, move],
-    castlingRights: state.castlingRights,
-    result: { status: "ongoing" },
-    enPassantTarget: null,
-  };
-
-  if (sideInCheck(newState, side)) {
-    return reject(state, move, "Move leaves a king-candidate under check");
-  }
-  if (!sideHasKing(newState.board, side)) {
-    return reject(state, move, "Move exposes every king-candidate at once");
-  }
-
-  // Guard the core invariant: the accepted state must keep a king alive.
-  assertKingInvariant(newState.board);
-
-  const opponent: Side = side === "white" ? "black" : "white";
-  const finalState = computeResult(newState, opponent);
-
-  return {
-    nextState: finalState,
-    accepted: true,
-    replayedMove: { status: "accepted", move, materializedSquares: allMaterialized },
-  };
-}
-
-// ── Legal moves (checking for self-check) ─────────────────────────────────────
+// ── Legal moves (§2.3/§2.5/§2.8 filtered candidates) ──────────────────────────
 
 export function getLegalMoves(state: GameState, from: number): Move[] {
   const cell = state.board[from];
@@ -676,126 +745,9 @@ export function getLegalMoves(state: GameState, from: number): Move[] {
   // fork-crown rule can be applied inside the simulation.
   const beforeAttacked = new Set(attackedKingCandidates(state, side));
 
-  const candidates = getCandidateMoves(state, from);
-  return candidates.filter((move) => {
-    // A dude that could only be a king cannot move into an attacked square. If
-    // narrowing eliminates every candidate, the move is outright illegal.
-    if (cell.kind === "dude" && move.kind === "normal") {
-      const eff = effectiveCandidates(cell.localCandidates, state.board, side);
-      const narrowed = narrowDudeMove({
-        board: state.board,
-        from: move.from,
-        to: move.to,
-        mover: cell,
-        candidates: eff,
-        side,
-        enPassantTarget: state.enPassantTarget,
-      });
-      if (narrowed.length === 0) return false;
-    }
-
-    const simBoard = [...state.board] as Cell[];
-    simulateMoveOnBoard(simBoard, move, side, state.enPassantTarget);
-    const { board: propagated } = propagate(simBoard);
-
-    // Passive narrowing: dudes newly exposed by this move shed K.
-    const { board: shedBoard } = shedUnshieldedKingCandidates(
-      state,
-      propagated,
-      side,
-      beforeAttacked,
-      move.to,
-    );
-    // Forced collapse: a king-ish evader becomes the king when other
-    // king-candidates remain attacked.
-    const { board: finalBoard } = resolveForkCrown(
-      state,
-      shedBoard,
-      side,
-      beforeAttacked,
-      move.from,
-      move.to,
-    );
-
-    const simState: GameState = {
-      ...state,
-      board: finalBoard,
-      turnNumber: state.turnNumber + 1,
-    };
-
-    // Castling: must not pass through or land in check
-    if (move.kind === "castling") {
-      const passThrough = squaresBetween(move.from, move.to);
-      const attackingSide: Side = side === "white" ? "black" : "white";
-      for (const sq of [move.from, ...passThrough, move.to]) {
-        if (isSquareAttackedBy({ ...state, board: state.board }, sq, attackingSide)) {
-          return false;
-        }
-      }
-    }
-
-    return !sideInCheck(simState, side) && sideHasKing(simState.board, side);
-  });
-}
-
-function simulateMoveOnBoard(
-  board: Cell[],
-  move: Move,
-  side: Side,
-  enPassantTarget: number | null,
-): void {
-  if (move.kind === "castling") {
-    const kingCell = board[move.from];
-    board[move.from] = null;
-    board[move.to] =
-      kingCell?.kind === "dude"
-        ? { kind: "materialized", owner: side, piece: "K" }
-        : (kingCell ?? null);
-    board[move.rookFrom!] = null;
-    board[move.rookTo!] = { kind: "materialized", owner: side, piece: "R" };
-    return;
-  }
-
-  if (move.kind === "en-passant") {
-    board[move.capturedPawnSquare!] = null;
-    board[move.to] = board[move.from] ?? null;
-    board[move.from] = null;
-    return;
-  }
-
-  const mover = board[move.from];
-  board[move.from] = null;
-
-  if (move.kind === "promotion") {
-    board[move.to] = { kind: "dude", owner: side, localCandidates: ["R", "N", "B", "Q", "K"] };
-  } else if (mover?.kind === "dude") {
-    const narrowed = narrowDudeMove({
-      board,
-      from: move.from,
-      to: move.to,
-      mover,
-      candidates: mover.localCandidates,
-      side,
-      enPassantTarget,
-    });
-    // If narrowing emptied the set the move is illegal (rejected by
-    // getLegalMoves before reaching here); fall back to the geometry set so the
-    // simulated board still holds a valid occupant.
-    const geomFallback = mover.localCandidates.filter((k) =>
-      dudeKindsForMove(move.from, move.to).includes(k),
-    );
-    board[move.to] = {
-      ...mover,
-      localCandidates:
-        narrowed.length > 0
-          ? narrowed
-          : geomFallback.length > 0
-            ? geomFallback
-            : mover.localCandidates,
-    };
-  } else {
-    board[move.to] = mover ?? null;
-  }
+  return getCandidateMoves(state, from).filter((move) =>
+    isMoveAllowed({ state, move, side, beforeAttacked }),
+  );
 }
 
 // ── Castling rights ───────────────────────────────────────────────────────────
