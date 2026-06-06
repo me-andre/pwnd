@@ -19,7 +19,7 @@ export type {
   GameState,
 } from "./types.js";
 
-export { ALL_DUDE_KINDS } from "./types.js";
+export { ALL_DUDE_KINDS, materializedPiece, dude } from "./types.js";
 
 export {
   squareIndex,

@@ -4,7 +4,8 @@
  */
 
 import { propagate } from "../src/candidates.js";
-import type { Cell, DudeKind, GameResult, GameState, Side } from "../src/types.js";
+import { dude, materializedPiece } from "../src/types.js";
+import type { Cell, DudeKind, GameResult, GameState, PieceKind, Side } from "../src/types.js";
 
 // ── Parser ─────────────────────────────────────────────────────────────────────
 
@@ -143,19 +144,15 @@ function parseToken(token: string): Cell {
 
   if (matMap[token]) {
     const m = matMap[token]!;
-    return {
-      kind: "materialized",
-      owner: m.owner,
-      piece: m.piece as import("../src/types.js").PieceKind,
-    };
+    return materializedPiece({ owner: m.owner, piece: m.piece as PieceKind });
   }
 
   // Full-superposition dude
   if (token === "D") {
-    return { kind: "dude", owner: "white", localCandidates: ["R", "N", "B", "Q", "K"] };
+    return dude({ owner: "white", localCandidates: ["R", "N", "B", "Q", "K"] });
   }
   if (token === "d") {
-    return { kind: "dude", owner: "black", localCandidates: ["R", "N", "B", "Q", "K"] };
+    return dude({ owner: "black", localCandidates: ["R", "N", "B", "Q", "K"] });
   }
 
   // Narrowed dude: D[BQK] or d[bqk]
@@ -164,7 +161,7 @@ function parseToken(token: string): Cell {
     const owner: Side = narrowedMatch[1] === "D" ? "white" : "black";
     const letters = narrowedMatch[2]!.toUpperCase().split("");
     const candidates = letters.filter((l): l is DudeKind => ["R", "N", "B", "Q", "K"].includes(l));
-    return { kind: "dude", owner, localCandidates: candidates };
+    return dude({ owner, localCandidates: candidates });
   }
 
   throw new Error(`Unknown token: "${token}"`);

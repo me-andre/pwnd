@@ -17,6 +17,10 @@ All public functions are exported from `src/index.ts`. Do not add new public exp
 - **Effective candidate set** (local ∩ global constraints) is always **computed on demand**, never stored.
 - Never store derived/computed data in `GameState`.
 
+## Cell factories
+- Build cells with the factories in `types.ts` — `materializedPiece({ owner, piece })` and `dude({ owner, localCandidates })` — instead of inline `{ kind: "materialized", ... }` / `{ kind: "dude", ... }` object literals.
+- This keeps each common cell shape defined in exactly one place. Add a new factory there if another recurring shape appears.
+
 ## Union shape rule
 Same as root AGENTS.md: all-primitive or all-object discriminated unions. No mixing.
 

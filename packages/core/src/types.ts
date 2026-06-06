@@ -51,6 +51,32 @@ export type Occupant = MaterializedPiece | Dude;
 /** A cell in the board. `null` means empty. */
 export type Cell = Occupant | null;
 
+// ── Cell factories ────────────────────────────────────────────────────────────
+// Prefer these over inline `{ kind: "materialized", ... }` / `{ kind: "dude", ... }`
+// object literals so the common cell shapes are built in exactly one place.
+
+/** Build a materialized-piece cell. */
+export function materializedPiece({
+  owner,
+  piece,
+}: {
+  owner: Side;
+  piece: PieceKind;
+}): MaterializedPiece {
+  return { kind: "materialized", owner, piece };
+}
+
+/** Build a dude cell carrying a local candidate set. */
+export function dude({
+  owner,
+  localCandidates,
+}: {
+  owner: Side;
+  localCandidates: ReadonlyArray<DudeKind>;
+}): Dude {
+  return { kind: "dude", owner, localCandidates };
+}
+
 // ── Moves ─────────────────────────────────────────────────────────────────────
 
 export type MoveKind =
