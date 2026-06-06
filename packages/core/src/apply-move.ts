@@ -11,6 +11,7 @@ import {
   squaresBetween,
 } from "./movement.js";
 import { rankOf } from "./squares.js";
+import { ALL_DUDE_KINDS, dude, materializedPiece } from "./types.js";
 import type {
   CastlingRights,
   Cell,
@@ -423,7 +424,7 @@ function resolveForkCrown(
   if (stillAttacked.length === 0) return { board, materializedSquares: [] };
 
   const newBoard = [...board] as Cell[];
-  newBoard[moveTo] = { kind: "materialized", owner: side, piece: "K" };
+  newBoard[moveTo] = materializedPiece({ owner: side, piece: "K" });
   const { board: cascaded, materializedSquares } = propagate(newBoard);
   return { board: cascaded, materializedSquares: [moveTo, ...materializedSquares] };
 }
@@ -435,7 +436,11 @@ function resolveForkCrown(
  * The single source of truth for "where pieces land":
  *   - normal: move the occupant; a dude narrows its candidate set (§2.3 step 4,
  *     incl. the §2.8 active "moved onto attacked square sheds K" narrowing).
- *   - promotion: the moved pawn becomes a fresh widest-set dude (§2.4).
+ *   - promotion: the moved pawn becomes a fresh dude whose LOCAL candidate set
+ *     is the widest possible ({R,N,B,Q,K}) (§2.4). This is only the local set;
+ *     the board's current global constraints (a live queen excludes Q, a
+ *     materialized king excludes K) are applied later when the effective set is
+ *     recomputed in `resolveSuperposition` — they are not baked in here.
  *   - castling: king-dude materializes as K and the partner as R (§2.5).
  *   - en-passant: the captured pawn is removed and the pawn lands on `to`.
  *
@@ -459,10 +464,10 @@ function applyMoveGeometry({
     newBoard[move.from] = null;
     newBoard[move.to] =
       kingCell !== undefined && kingCell !== null && kingCell.kind === "dude"
-        ? { kind: "materialized", owner: side, piece: "K" }
+        ? materializedPiece({ owner: side, piece: "K" })
         : (kingCell ?? null);
     newBoard[move.rookFrom!] = null;
-    newBoard[move.rookTo!] = { kind: "materialized", owner: side, piece: "R" };
+    newBoard[move.rookTo!] = materializedPiece({ owner: side, piece: "R" });
     return newBoard;
   }
 
@@ -478,7 +483,7 @@ function applyMoveGeometry({
   newBoard[move.from] = null;
 
   if (move.kind === "promotion") {
-    newBoard[move.to] = { kind: "dude", owner: side, localCandidates: ["R", "N", "B", "Q", "K"] };
+    newBoard[move.to] = dude({ owner: side, localCandidates: [...ALL_DUDE_KINDS] });
   } else if (mover !== undefined && mover !== null && mover.kind === "dude") {
     const eff = effectiveCandidates(mover.localCandidates, board, side);
     const narrowed = narrowDudeMove({
@@ -562,10 +567,13 @@ function simulateMove({
 // ── §2.x legality predicates ──────────────────────────────────────────────────
 
 /**
- * §2.3 step 3: a dude's move must keep at least one candidate. Intersecting the
- * effective set with the move geometry (and shedding K when the destination is
- * attacked) must leave a non-empty set. Non-dude moves and non-normal moves
- * carry no such constraint.
+ * §2.3 step 3: a dude's plain move must keep at least one candidate.
+ * Intersecting the effective set with the move geometry (and shedding K when the
+ * destination is attacked) must leave a non-empty set.
+ *
+ * Only a "normal" move of a dude is constrained this way. The other move kinds
+ * — promotion (a pawn, not a dude), castling, and en-passant (always a
+ * materialized pawn) — never narrow a dude's candidates, so they pass here.
  */
 function moveNarrowsToSomeCandidate({
   state,
@@ -614,24 +622,10 @@ function castlingPathClearOfCheck({
 }
 
 /**
- * §2.2/§2.8 king-presence gate: a move may not leave the side with no possible
- * king. Delegates to `sideHasKing` (materialized king or a dude that still
- * carries K).
- */
-function willLeaveAtLeastOneKing({
-  board,
-  side,
-}: {
-  board: ReadonlyArray<Cell>;
-  side: Side;
-}): boolean {
-  return sideHasKing(board, side);
-}
-
-/**
  * The declarative legality rule, one step per §2.x:
  *   §2.3 the dude's move must narrow to some candidate.
- *   §2.5 castling must not cross an attacked square.
+ *   §2.5 the squares the castling king starts on, steps over, and lands on are
+ *        all free of attack.
  *   §2.8 after resolving, no king-carrier may be left under attack.
  *   §2.2/§2.8 a king must remain on the side.
  */
@@ -650,10 +644,13 @@ function isMoveAllowed({
   if (move.kind === "castling" && !castlingPathClearOfCheck({ state, move, side })) {
     return false; // §2.5
   }
-  const { board } = simulateMove({ state, move, side, beforeAttacked }); // §2.3 + §2.7 + §2.8
-  const next: GameState = { ...state, board, turnNumber: state.turnNumber + 1 };
+  // `nextBoard` is the hypothetical board after the move resolves.
+  const { board: nextBoard } = simulateMove({ state, move, side, beforeAttacked }); // §2.3 + §2.7 + §2.8
+  const next: GameState = { ...state, board: nextBoard, turnNumber: state.turnNumber + 1 };
   if (sideInCheck(next, side)) return false; // §2.8: no king-carrier left under attack
-  if (!willLeaveAtLeastOneKing({ board, side })) return false; // §2.2/§2.8: a king must remain
+  // §2.2/§2.8: the move must leave the side with at least one king (a
+  // materialized king or a dude that can still be the king).
+  if (!sideHasKing(nextBoard, side)) return false;
   return true;
 }
 
@@ -694,13 +691,14 @@ export function applyMove(state: GameState, move: Move): ApplyMoveResult {
     beforeAttacked,
   });
 
-  // Metadata folds uniformly: castling revokes the side's rights; everything
-  // else runs the corner/king tracking. `computeEnPassant` yields null for
-  // castling and en-passant, so both share the normal path.
+  // Update castling rights: castling gives up both of the side's rights;
+  // any other move only clears the rights tied to the squares it touches.
   const newCastlingRights =
     move.kind === "castling"
       ? revokeCastlingForSide(state.castlingRights, side)
       : updateCastlingRights(state.castlingRights, move, cell, side);
+  // Set the en-passant target square (only a pawn's two-square push creates one;
+  // every other move kind, castling and en-passant included, clears it).
   const newEnPassant = computeEnPassant(move, cell);
 
   const newState: GameState = {
