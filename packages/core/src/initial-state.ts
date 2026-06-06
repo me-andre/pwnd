@@ -1,6 +1,6 @@
 import { propagate } from "./candidates.js";
 import type { CastlingRights, Cell, GameState } from "./types.js";
-import { ALL_DUDE_KINDS } from "./types.js";
+import { ALL_DUDE_KINDS, dude, materializedPiece } from "./types.js";
 
 /** Return the initial GameState for a new game. */
 export function createInitialState(): GameState {
@@ -8,22 +8,14 @@ export function createInitialState(): GameState {
 
   // Place pawns: white on rank 2 (indices 8–15), black on rank 7 (indices 48–55).
   for (let file = 0; file < 8; file++) {
-    board[8 + file] = { kind: "materialized", owner: "white", piece: "P" };
-    board[48 + file] = { kind: "materialized", owner: "black", piece: "P" };
+    board[8 + file] = materializedPiece({ owner: "white", piece: "P" });
+    board[48 + file] = materializedPiece({ owner: "black", piece: "P" });
   }
 
   // Place dudes: white on rank 1 (indices 0–7), black on rank 8 (indices 56–63).
   for (let file = 0; file < 8; file++) {
-    board[file] = {
-      kind: "dude",
-      owner: "white",
-      localCandidates: [...ALL_DUDE_KINDS],
-    };
-    board[56 + file] = {
-      kind: "dude",
-      owner: "black",
-      localCandidates: [...ALL_DUDE_KINDS],
-    };
+    board[file] = dude({ owner: "white", localCandidates: [...ALL_DUDE_KINDS] });
+    board[56 + file] = dude({ owner: "black", localCandidates: [...ALL_DUDE_KINDS] });
   }
 
   const castlingRights: CastlingRights = {

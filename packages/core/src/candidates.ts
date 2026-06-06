@@ -7,7 +7,7 @@
  */
 
 import type { Cell, DudeKind, Side } from "./types.js";
-import { ALL_DUDE_KINDS } from "./types.js";
+import { ALL_DUDE_KINDS, materializedPiece } from "./types.js";
 
 // ── Global constraint helpers ─────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ export function propagatePass(
       if (eff.length === 0) continue; // illegal state
       if (eff.length === 1) {
         const piece = eff[0] as NonNullable<(typeof eff)[0]>;
-        cells[i] = { kind: "materialized", owner: cell.owner, piece };
+        cells[i] = materializedPiece({ owner: cell.owner, piece });
         materializedSquares.push(i);
         changed = true;
         innerChanged = true;
@@ -126,8 +126,7 @@ export function propagatePass(
     }
     if (kingCandidates.length === 1) {
       const idx = kingCandidates[0]!;
-      const cell = cells[idx] as import("./types.js").Dude;
-      cells[idx] = { kind: "materialized", owner: side, piece: "K" };
+      cells[idx] = materializedPiece({ owner: side, piece: "K" });
       materializedSquares.push(idx);
       changed = true;
       // Re-run singleton check (newly materialized king may cause Q-only dude
@@ -141,11 +140,10 @@ export function propagatePass(
           if (c === undefined || c === null || c.kind !== "dude" || c.owner !== side) continue;
           const eff = effectiveCandidates(c.localCandidates, cells, c.owner);
           if (eff.length === 1) {
-            cells[i] = {
-              kind: "materialized",
+            cells[i] = materializedPiece({
               owner: c.owner,
               piece: eff[0] as import("./types.js").DudeKind,
-            };
+            });
             materializedSquares.push(i);
             changed = true;
             innerChanged = true;
