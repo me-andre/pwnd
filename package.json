@@ -7,7 +7,7 @@
   "author": "",
   "license": "UNLICENSED",
   "private": true,
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@12.4.2+sha512.08adc6613180275c7c9edada39dcf08c9c61ad4e7eaf330a4f3461f102b0f907423454d117f98e72d47fef0616070644d7bffc973a6a57f5090a6d7c368b07c9",
   "scripts": {
     "test": "pnpm -r test",
     "lint": "biome check .",
@@ -21,12 +21,9 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@playwright/test": "^1.60.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.4",
     "tsx": "^4.22.3",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["sharp"]
+    "vitest": "^4.1.11"
   }
 }
